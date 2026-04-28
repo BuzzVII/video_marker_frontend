@@ -1,7 +1,7 @@
 import { ChangeEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
-import { fetchImageSets, uploadVideo } from "../api/mockApi";
+import { fetchImageSets, uploadVideo } from "../api/client";
 import {
   imageSetAtom,
   selectedFrameByPaneAtom,
@@ -20,9 +20,10 @@ export function ImagePreviewList({ side }: Props) {
   const [selectedImageSetId, setSelectedImageSetId] = useAtom(selectedImageSetIdAtom);
   const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(selectedFrameByPaneAtom);
 
-  const imageSets = queryClient.getQueryData<Awaited<ReturnType<typeof fetchImageSets>>>([
-    "imageSets",
-  ]);
+  const imageSetsQuery = useQuery({
+    queryKey: ["imageSets"],
+    queryFn: fetchImageSets,
+  });
 
   const uploadMutation = useMutation({
     mutationFn: uploadVideo,
@@ -33,14 +34,18 @@ export function ImagePreviewList({ side }: Props) {
   });
 
   function onImageSetChange(event: ChangeEvent<HTMLSelectElement>) {
-    setSelectedImageSetId(event.target.value);
+    const nextId = event.target.value;
+    setSelectedImageSetId(nextId || null);
   }
 
   function onVideoUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+
     if (file) {
       uploadMutation.mutate(file);
     }
+
+    event.target.value = "";
   }
 
   function selectFrame(frameId: string) {
@@ -53,18 +58,33 @@ export function ImagePreviewList({ side }: Props) {
   return (
     <aside className="preview-column">
       <div className="image-set-controls">
-        <select value={selectedImageSetId} onChange={onImageSetChange}>
-          {(imageSets ?? []).map(set => (
+        <select value={selectedImageSetId ?? ""} onChange={onImageSetChange}>
+          <option value="" disabled>
+            Select image set
+          </option>
+
+          {(imageSetsQuery.data ?? []).map(set => (
             <option key={set.id} value={set.id}>
-              {set.name}
+              {set.name} ({set.frame_count})
             </option>
           ))}
         </select>
 
         <label className="upload-button">
-          Upload video
-          <input type="file" accept="video/*" onChange={onVideoUpload} />
+          {uploadMutation.isPending ? "Uploading..." : "Upload video"}
+          <input
+            type="file"
+            accept="video/*"
+            disabled={uploadMutation.isPending}
+            onChange={onVideoUpload}
+          />
         </label>
+
+        {uploadMutation.error ? (
+          <div className="inline-error">
+            Upload failed: {uploadMutation.error.message}
+          </div>
+        ) : null}
       </div>
 
       <div className="preview-list">

@@ -5,9 +5,15 @@ import type {
   PointPosition,
   ToolMode,
 } from "../types/annotations";
-import { emptyAnnotations } from "../api/mockData";
 
-export const selectedImageSetIdAtom = atom<string>("set-a");
+export const emptyAnnotations: AnnotationState = {
+  pointsById: {},
+  pointPositionsByPointId: {},
+  linesById: {},
+  lineOccurrencesByLineId: {},
+};
+
+export const selectedImageSetIdAtom = atom<string | null>(null);
 
 export const imageSetAtom = atom<ImageSet | null>(null);
 

@@ -1,6 +1,6 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
-import { saveAnnotations } from "../api/mockApi";
+import { saveAnnotations } from "../api/client";
 import {
   activePointAtom,
   annotationsAtom,
@@ -17,13 +17,18 @@ const tools: Array<{ id: ToolMode; label: string }> = [
 ];
 
 export function Toolbar() {
+  const queryClient = useQueryClient();
+
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
   const annotations = useAtomValue(annotationsAtom);
   const selectedImageSetId = useAtomValue(selectedImageSetIdAtom);
   const activePoint = useAtomValue(activePointAtom);
 
   const saveMutation = useMutation({
-    mutationFn: () => saveAnnotations(selectedImageSetId, annotations),
+    mutationFn: () => saveAnnotations(selectedImageSetId!, annotations),
+    onSuccess: saved => {
+      queryClient.setQueryData(["annotations", selectedImageSetId], saved);
+    },
   });
 
   return (
@@ -38,8 +43,12 @@ export function Toolbar() {
         </button>
       ))}
 
-      <button className="tool save" onClick={() => saveMutation.mutate()}>
-        Save points
+      <button
+        className="tool save"
+        disabled={!selectedImageSetId || saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+      >
+        {saveMutation.isPending ? "Saving..." : "Save points"}
       </button>
 
       <div className="active-point">
