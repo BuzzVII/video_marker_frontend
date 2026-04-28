@@ -23,7 +23,9 @@ export function FrameCanvas({ frame }: Props) {
   const [annotations, setAnnotations] = useAtom(annotationsAtom);
   const [toolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
-  const [lineStartPointId, setLineStartPointId] = useAtom(activeLinePointStartAtom);
+  const [lineStartPointId, setLineStartPointId] = useAtom(
+    activeLinePointStartAtom,
+  );
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
 
   const visiblePoints = useMemo(() => {
@@ -59,22 +61,20 @@ export function FrameCanvas({ frame }: Props) {
       }
     }
 
-    return bestDistance < 3 ? best : null;
+    return bestDistance < 1.5 ? best : null;
   }
 
   function createOrPlacePoint(pos: { x: number; y: number }) {
-    setAnnotations(current => {
-      const existingPointId = activePointId;
-      const existingPoint =
-        existingPointId === null ? null : current.pointsById[existingPointId];
+    const nextPointId =
+      activePointId ?? `point-${Object.keys(annotations.pointsById).length + 1}`;
 
-      const nextId =
-        existingPoint?.id ?? `point-${Object.keys(current.pointsById).length + 1}`;
+    setAnnotations(current => {
+      const existingPoint = current.pointsById[nextPointId];
 
       const nextPoint =
         existingPoint ??
         ({
-          id: nextId,
+          id: nextPointId,
           color: makePointColor(Object.keys(current.pointsById).length),
         });
 
@@ -82,21 +82,19 @@ export function FrameCanvas({ frame }: Props) {
         ...current,
         pointsById: {
           ...current.pointsById,
-          [nextId]: nextPoint,
+          [nextPointId]: nextPoint,
         },
       };
 
       return upsertPointPosition(updated, {
-        pointId: nextId,
+        pointId: nextPointId,
         imageId: frame.id,
         x: pos.x,
         y: pos.y,
       });
     });
 
-    if (!activePointId) {
-      setActivePointId(`point-${Object.keys(annotations.pointsById).length + 1}`);
-    }
+    setActivePointId(nextPointId);
   }
 
   function deletePoint(pointId: string) {
@@ -111,7 +109,8 @@ export function FrameCanvas({ frame }: Props) {
 
           if (
             occurrence &&
-            (occurrence.startPointId === pointId || occurrence.endPointId === pointId)
+            (occurrence.startPointId === pointId ||
+              occurrence.endPointId === pointId)
           ) {
             delete nextByImage[frame.id];
           }
@@ -246,33 +245,29 @@ export function FrameCanvas({ frame }: Props) {
             />
           );
         })}
-
-        {visiblePoints.map(point => {
-          const definition = annotations.pointsById[point.pointId];
-
-          return (
-            <g key={point.pointId}>
-              <circle
-                cx={point.x}
-                cy={point.y}
-                r="1.4"
-                fill={definition?.color ?? "white"}
-                stroke={activePointId === point.pointId ? "white" : "black"}
-                strokeWidth="0.35"
-                vectorEffect="non-scaling-stroke"
-              />
-              <text
-                x={point.x + 1.8}
-                y={point.y - 1.8}
-                className="point-label"
-                vectorEffect="non-scaling-stroke"
-              >
-                {point.pointId}
-              </text>
-            </g>
-          );
-        })}
       </svg>
+
+      {visiblePoints.map(point => {
+        const definition = annotations.pointsById[point.pointId];
+
+        return (
+          <button
+            key={point.pointId}
+            className={
+              activePointId === point.pointId
+                ? "point-marker active"
+                : "point-marker"
+            }
+            style={{
+              left: `${point.x}%`,
+              top: `${point.y}%`,
+              background: definition?.color ?? "white",
+            }}
+            aria-label={point.pointId}
+            type="button"
+          />
+        );
+      })}
     </div>
   );
 }

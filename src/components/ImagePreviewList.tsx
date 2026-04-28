@@ -3,9 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom } from "jotai";
 import { fetchImageSets, uploadVideo } from "../api/client";
 import {
-  imageSetAtom,
+  imageSetByPaneAtom,
   selectedFrameByPaneAtom,
-  selectedImageSetIdAtom,
+  selectedImageSetIdByPaneAtom,
 } from "../state/annotationAtoms";
 import type { PaneSide } from "../types/annotations";
 
@@ -16,9 +16,16 @@ type Props = {
 export function ImagePreviewList({ side }: Props) {
   const queryClient = useQueryClient();
 
-  const [imageSet] = useAtom(imageSetAtom);
-  const [selectedImageSetId, setSelectedImageSetId] = useAtom(selectedImageSetIdAtom);
-  const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(selectedFrameByPaneAtom);
+  const [imageSetByPane] = useAtom(imageSetByPaneAtom);
+  const [selectedImageSetIdByPane, setSelectedImageSetIdByPane] = useAtom(
+    selectedImageSetIdByPaneAtom,
+  );
+  const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(
+    selectedFrameByPaneAtom,
+  );
+
+  const imageSet = imageSetByPane[side];
+  const selectedImageSetId = selectedImageSetIdByPane[side];
 
   const imageSetsQuery = useQuery({
     queryKey: ["imageSets"],
@@ -29,13 +36,21 @@ export function ImagePreviewList({ side }: Props) {
     mutationFn: uploadVideo,
     onSuccess: uploadedSet => {
       queryClient.invalidateQueries({ queryKey: ["imageSets"] });
-      setSelectedImageSetId(uploadedSet.id);
+
+      setSelectedImageSetIdByPane(current => ({
+        ...current,
+        [side]: uploadedSet.id,
+      }));
     },
   });
 
   function onImageSetChange(event: ChangeEvent<HTMLSelectElement>) {
-    const nextId = event.target.value;
-    setSelectedImageSetId(nextId || null);
+    const nextId = event.target.value || null;
+
+    setSelectedImageSetIdByPane(current => ({
+      ...current,
+      [side]: nextId,
+    }));
   }
 
   function onVideoUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -49,10 +64,10 @@ export function ImagePreviewList({ side }: Props) {
   }
 
   function selectFrame(frameId: string) {
-    setSelectedFrameByPane({
-      ...selectedFrameByPane,
+    setSelectedFrameByPane(current => ({
+      ...current,
       [side]: frameId,
-    });
+    }));
   }
 
   return (

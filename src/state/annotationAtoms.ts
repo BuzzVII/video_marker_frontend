@@ -2,6 +2,7 @@ import { atom } from "jotai";
 import type {
   AnnotationState,
   ImageSet,
+  PaneSide,
   PointPosition,
   ToolMode,
 } from "../types/annotations";
@@ -13,9 +14,15 @@ export const emptyAnnotations: AnnotationState = {
   lineOccurrencesByLineId: {},
 };
 
-export const selectedImageSetIdAtom = atom<string | null>(null);
+export const selectedImageSetIdByPaneAtom = atom<Record<PaneSide, string | null>>({
+  left: null,
+  right: null,
+});
 
-export const imageSetAtom = atom<ImageSet | null>(null);
+export const imageSetByPaneAtom = atom<Record<PaneSide, ImageSet | null>>({
+  left: null,
+  right: null,
+});
 
 export const annotationsAtom = atom<AnnotationState>(
   structuredClone(emptyAnnotations),
@@ -27,7 +34,7 @@ export const activePointIdAtom = atom<string | null>(null);
 
 export const activeLinePointStartAtom = atom<string | null>(null);
 
-export const selectedFrameByPaneAtom = atom<Record<"left" | "right", string | null>>({
+export const selectedFrameByPaneAtom = atom<Record<PaneSide, string | null>>({
   left: null,
   right: null,
 });
@@ -59,4 +66,35 @@ export function upsertPointPosition(
       },
     },
   };
+}
+
+export function mergeAnnotations(
+  annotations: AnnotationState[],
+): AnnotationState {
+  const merged = structuredClone(emptyAnnotations);
+
+  for (const annotation of annotations) {
+    Object.assign(merged.pointsById, annotation.pointsById);
+    Object.assign(merged.linesById, annotation.linesById);
+
+    for (const [pointId, byImage] of Object.entries(
+      annotation.pointPositionsByPointId,
+    )) {
+      merged.pointPositionsByPointId[pointId] = {
+        ...(merged.pointPositionsByPointId[pointId] ?? {}),
+        ...byImage,
+      };
+    }
+
+    for (const [lineId, byImage] of Object.entries(
+      annotation.lineOccurrencesByLineId,
+    )) {
+      merged.lineOccurrencesByLineId[lineId] = {
+        ...(merged.lineOccurrencesByLineId[lineId] ?? {}),
+        ...byImage,
+      };
+    }
+  }
+
+  return merged;
 }

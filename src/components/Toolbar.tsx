@@ -1,10 +1,11 @@
+import { ChangeEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 import { saveAnnotations } from "../api/client";
 import {
-  activePointAtom,
+  activePointIdAtom,
   annotationsAtom,
-  selectedImageSetIdAtom,
+  selectedImageSetIdByPaneAtom,
   toolModeAtom,
 } from "../state/annotationAtoms";
 import type { ToolMode } from "../types/annotations";
@@ -20,16 +21,43 @@ export function Toolbar() {
   const queryClient = useQueryClient();
 
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
+  const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const annotations = useAtomValue(annotationsAtom);
-  const selectedImageSetId = useAtomValue(selectedImageSetIdAtom);
-  const activePoint = useAtomValue(activePointAtom);
+  const selectedImageSetIdByPane = useAtomValue(selectedImageSetIdByPaneAtom);
+
+  const pointOptions = Object.values(annotations.pointsById);
+
+  const selectedImageSetIds = Array.from(
+    new Set(
+      Object.values(selectedImageSetIdByPane).filter(
+        (id): id is string => id !== null,
+      ),
+    ),
+  );
 
   const saveMutation = useMutation({
-    mutationFn: () => saveAnnotations(selectedImageSetId!, annotations),
-    onSuccess: saved => {
-      queryClient.setQueryData(["annotations", selectedImageSetId], saved);
+    mutationFn: async () => {
+      const results = await Promise.all(
+        selectedImageSetIds.map(imageSetId =>
+          saveAnnotations(imageSetId, annotations),
+        ),
+      );
+
+      return results;
+    },
+    onSuccess: savedDocuments => {
+      for (let i = 0; i < selectedImageSetIds.length; i += 1) {
+        queryClient.setQueryData(
+          ["annotations", selectedImageSetIds[i]],
+          savedDocuments[i],
+        );
+      }
     },
   });
+
+  function onActivePointChange(event: ChangeEvent<HTMLSelectElement>) {
+    setActivePointId(event.target.value || null);
+  }
 
   return (
     <div className="toolbar">
@@ -43,22 +71,36 @@ export function Toolbar() {
         </button>
       ))}
 
+      <label className="active-point-select">
+        <span>active point</span>
+        <select value={activePointId ?? ""} onChange={onActivePointChange}>
+          <option value="">none</option>
+
+          {pointOptions.map(point => (
+            <option key={point.id} value={point.id}>
+              {point.id}
+            </option>
+          ))}
+        </select>
+
+        <span
+          className="active-point-swatch"
+          style={{
+            background:
+              activePointId && annotations.pointsById[activePointId]
+                ? annotations.pointsById[activePointId].color
+                : "transparent",
+          }}
+        />
+      </label>
+
       <button
         className="tool save"
-        disabled={!selectedImageSetId || saveMutation.isPending}
+        disabled={selectedImageSetIds.length === 0 || saveMutation.isPending}
         onClick={() => saveMutation.mutate()}
       >
         {saveMutation.isPending ? "Saving..." : "Save points"}
       </button>
-
-      <div className="active-point">
-        <span>active point</span>
-        <span
-          className="active-point-swatch"
-          style={{ background: activePoint?.color ?? "transparent" }}
-        />
-        <span>{activePoint?.id ?? "none"}</span>
-      </div>
     </div>
   );
 }

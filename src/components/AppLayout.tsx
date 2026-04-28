@@ -1,25 +1,14 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAtom } from "jotai";
-import {
-  fetchAnnotations,
-  fetchImageSet,
-  fetchImageSets,
-} from "../api/client";
-import {
-  annotationsAtom,
-  emptyAnnotations,
-  imageSetAtom,
-  selectedFrameByPaneAtom,
-  selectedImageSetIdAtom,
-} from "../state/annotationAtoms";
+import { fetchImageSets } from "../api/client";
+import { selectedImageSetIdByPaneAtom } from "../state/annotationAtoms";
 import { Pane } from "./Pane";
 
 export function AppLayout() {
-  const [selectedImageSetId, setSelectedImageSetId] = useAtom(selectedImageSetIdAtom);
-  const [, setImageSet] = useAtom(imageSetAtom);
-  const [, setAnnotations] = useAtom(annotationsAtom);
-  const [, setSelectedFrameByPane] = useAtom(selectedFrameByPaneAtom);
+  const [selectedImageSetIdByPane, setSelectedImageSetIdByPane] = useAtom(
+    selectedImageSetIdByPaneAtom,
+  );
 
   const imageSetsQuery = useQuery({
     queryKey: ["imageSets"],
@@ -27,45 +16,16 @@ export function AppLayout() {
   });
 
   useEffect(() => {
-    if (selectedImageSetId) return;
+    const first = imageSetsQuery.data?.[0]?.id ?? null;
+    const second = imageSetsQuery.data?.[1]?.id ?? first;
 
-    const firstImageSet = imageSetsQuery.data?.[0];
-    if (firstImageSet) {
-      setSelectedImageSetId(firstImageSet.id);
-    }
-  }, [imageSetsQuery.data, selectedImageSetId, setSelectedImageSetId]);
+    if (!first) return;
 
-  const imageSetQuery = useQuery({
-    queryKey: ["imageSet", selectedImageSetId],
-    queryFn: () => fetchImageSet(selectedImageSetId!),
-    enabled: selectedImageSetId !== null,
-  });
-
-  const annotationQuery = useQuery({
-    queryKey: ["annotations", selectedImageSetId],
-    queryFn: () => fetchAnnotations(selectedImageSetId!),
-    enabled: selectedImageSetId !== null,
-  });
-
-  useEffect(() => {
-    if (!imageSetQuery.data) {
-      setImageSet(null);
-      setSelectedFrameByPane({ left: null, right: null });
-      return;
-    }
-
-    setImageSet(imageSetQuery.data);
-
-    const firstFrameId = imageSetQuery.data.frames[0]?.id ?? null;
-    setSelectedFrameByPane({
-      left: firstFrameId,
-      right: firstFrameId,
-    });
-  }, [imageSetQuery.data, setImageSet, setSelectedFrameByPane]);
-
-  useEffect(() => {
-    setAnnotations(annotationQuery.data ?? structuredClone(emptyAnnotations));
-  }, [annotationQuery.data, setAnnotations]);
+    setSelectedImageSetIdByPane(current => ({
+      left: current.left ?? first,
+      right: current.right ?? second,
+    }));
+  }, [imageSetsQuery.data, setSelectedImageSetIdByPane]);
 
   if (imageSetsQuery.isLoading) {
     return <main className="status-screen">Loading image sets...</main>;
