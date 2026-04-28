@@ -4,48 +4,76 @@ import {
   activeLinePointStartAtom,
   activePointIdAtom,
   annotationsAtom,
+  makeObservationKey,
   makePointColor,
   toolModeAtom,
   upsertPointPosition,
 } from "../state/annotationAtoms";
-import type { ImageFrame, PaneSide, PointPosition } from "../types/annotations";
+import type {
+  ImageFrame,
+  LineOccurrence,
+  PaneSide,
+  PointPosition,
+} from "../types/annotations";
 
 type Props = {
   side: PaneSide;
+  imageSetId: string;
   frame: ImageFrame;
+};
+
+type CursorState = {
+  visible: boolean;
+  x: number;
+  y: number;
+  percentX: number;
+  percentY: number;
 };
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export function FrameCanvas({ frame }: Props) {
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function FrameCanvas({ imageSetId, frame }: Props) {
   const [annotations, setAnnotations] = useAtom(annotationsAtom);
   const [toolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
-  const [lineStartPointId, setLineStartPointId] = useAtom(
-    activeLinePointStartAtom,
-  );
+  const [lineStartPointId, setLineStartPointId] = useAtom(activeLinePointStartAtom);
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<CursorState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    percentX: 0,
+    percentY: 0,
+  });
+
+  const observationKey = makeObservationKey(imageSetId, frame.id);
 
   const visiblePoints = useMemo(() => {
     return Object.values(annotations.pointPositionsByPointId)
-      .map(byImage => byImage[frame.id])
+      .map(byObservation => byObservation[observationKey])
       .filter(Boolean) as PointPosition[];
-  }, [annotations.pointPositionsByPointId, frame.id]);
+  }, [annotations.pointPositionsByPointId, observationKey]);
 
   const visibleLines = useMemo(() => {
     return Object.values(annotations.lineOccurrencesByLineId)
-      .map(byImage => byImage[frame.id])
-      .filter(Boolean);
-  }, [annotations.lineOccurrencesByLineId, frame.id]);
+      .map(byObservation => byObservation[observationKey])
+      .filter(Boolean) as LineOccurrence[];
+  }, [annotations.lineOccurrencesByLineId, observationKey]);
 
   function imageCoords(event: MouseEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
 
     return {
-      x: ((event.clientX - rect.left) / rect.width) * 100,
-      y: ((event.clientY - rect.top) / rect.height) * 100,
+      x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
+      y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
+      screenX: event.clientX - rect.left,
+      screenY: event.clientY - rect.top,
     };
   }
 
@@ -65,18 +93,14 @@ export function FrameCanvas({ frame }: Props) {
   }
 
   function createOrPlacePoint(pos: { x: number; y: number }) {
-    const nextPointId =
-      activePointId ?? `point-${Object.keys(annotations.pointsById).length + 1}`;
+    const nextPointId = activePointId ?? `point-${Object.keys(annotations.pointsById).length + 1}`;
 
     setAnnotations(current => {
       const existingPoint = current.pointsById[nextPointId];
-
-      const nextPoint =
-        existingPoint ??
-        ({
-          id: nextPointId,
-          color: makePointColor(Object.keys(current.pointsById).length),
-        });
+      const nextPoint = existingPoint ?? {
+        id: nextPointId,
+        color: makePointColor(Object.keys(current.pointsById).length),
+      };
 
       const updated = {
         ...current,
@@ -88,6 +112,7 @@ export function FrameCanvas({ frame }: Props) {
 
       return upsertPointPosition(updated, {
         pointId: nextPointId,
+        imageSetId,
         imageId: frame.id,
         x: pos.x,
         y: pos.y,
@@ -100,22 +125,21 @@ export function FrameCanvas({ frame }: Props) {
   function deletePoint(pointId: string) {
     setAnnotations(current => {
       const positions = { ...(current.pointPositionsByPointId[pointId] ?? {}) };
-      delete positions[frame.id];
+      delete positions[observationKey];
 
       const lineOccurrencesByLineId = Object.fromEntries(
-        Object.entries(current.lineOccurrencesByLineId).map(([lineId, byImage]) => {
-          const nextByImage = { ...byImage };
-          const occurrence = nextByImage[frame.id];
+        Object.entries(current.lineOccurrencesByLineId).map(([lineId, byObservation]) => {
+          const nextByObservation = { ...byObservation };
+          const occurrence = nextByObservation[observationKey];
 
           if (
             occurrence &&
-            (occurrence.startPointId === pointId ||
-              occurrence.endPointId === pointId)
+            (occurrence.startPointId === pointId || occurrence.endPointId === pointId)
           ) {
-            delete nextByImage[frame.id];
+            delete nextByObservation[observationKey];
           }
 
-          return [lineId, nextByImage];
+          return [lineId, nextByObservation];
         }),
       );
 
@@ -134,6 +158,7 @@ export function FrameCanvas({ frame }: Props) {
     setAnnotations(current =>
       upsertPointPosition(current, {
         pointId,
+        imageSetId,
         imageId: frame.id,
         x: pos.x,
         y: pos.y,
@@ -164,8 +189,9 @@ export function FrameCanvas({ frame }: Props) {
         lineOccurrencesByLineId: {
           ...current.lineOccurrencesByLineId,
           [lineId]: {
-            [frame.id]: {
+            [observationKey]: {
               lineId,
+              imageSetId,
               imageId: frame.id,
               startPointId: lineStartPointId,
               endPointId: pointId,
@@ -207,9 +233,17 @@ export function FrameCanvas({ frame }: Props) {
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLDivElement>) {
-    if (!draggingPointId) return;
-
     const pos = imageCoords(event);
+
+    setCursor({
+      visible: true,
+      x: pos.screenX,
+      y: pos.screenY,
+      percentX: pos.x,
+      percentY: pos.y,
+    });
+
+    if (!draggingPointId) return;
     movePoint(draggingPointId, pos);
   }
 
@@ -217,20 +251,29 @@ export function FrameCanvas({ frame }: Props) {
     setDraggingPointId(null);
   }
 
+  function onCanvasMouseLeave() {
+    setDraggingPointId(null);
+    setCursor(current => ({ ...current, visible: false }));
+  }
+
+  const zoomBackgroundPosition = `${cursor.percentX}% ${cursor.percentY}%`;
+  const zoomLeft = clamp(cursor.x + 18, 12, 1000);
+  const zoomTop = clamp(cursor.y + 18, 12, 1000);
+
   return (
     <div
       className="frame-canvas"
       onMouseDown={onCanvasMouseDown}
       onMouseMove={onCanvasMouseMove}
       onMouseUp={onCanvasMouseUp}
-      onMouseLeave={onCanvasMouseUp}
+      onMouseLeave={onCanvasMouseLeave}
     >
       <img src={frame.url} alt={frame.label} draggable={false} />
 
       <svg className="annotation-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
         {visibleLines.map(line => {
-          const start = annotations.pointPositionsByPointId[line.startPointId]?.[frame.id];
-          const end = annotations.pointPositionsByPointId[line.endPointId]?.[frame.id];
+          const start = annotations.pointPositionsByPointId[line.startPointId]?.[observationKey];
+          const end = annotations.pointPositionsByPointId[line.endPointId]?.[observationKey];
 
           if (!start || !end) return null;
 
@@ -245,29 +288,51 @@ export function FrameCanvas({ frame }: Props) {
             />
           );
         })}
+
+        {visiblePoints.map(point => {
+          const definition = annotations.pointsById[point.pointId];
+
+          return (
+            <g key={point.pointId}>
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r="1.4"
+                fill={definition?.color ?? "white"}
+                stroke={activePointId === point.pointId ? "white" : "black"}
+                strokeWidth="0.35"
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                x={point.x + 1.8}
+                y={point.y - 1.8}
+                className="point-label"
+                vectorEffect="non-scaling-stroke"
+              >
+                {point.pointId}
+              </text>
+            </g>
+          );
+        })}
       </svg>
 
-      {visiblePoints.map(point => {
-        const definition = annotations.pointsById[point.pointId];
-
-        return (
-          <button
-            key={point.pointId}
-            className={
-              activePointId === point.pointId
-                ? "point-marker active"
-                : "point-marker"
-            }
-            style={{
-              left: `${point.x}%`,
-              top: `${point.y}%`,
-              background: definition?.color ?? "white",
-            }}
-            aria-label={point.pointId}
-            type="button"
-          />
-        );
-      })}
+      {cursor.visible ? (
+        <div
+          className="zoom-box"
+          style={{
+            left: zoomLeft,
+            top: zoomTop,
+            backgroundImage: `url(${frame.url})`,
+            backgroundPosition: zoomBackgroundPosition,
+          }}
+        >
+          <span className="zoom-crosshair horizontal" />
+          <span className="zoom-crosshair vertical" />
+          <span className="zoom-coordinates">
+            {cursor.percentX.toFixed(1)}, {cursor.percentY.toFixed(1)}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

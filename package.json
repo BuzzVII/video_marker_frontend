@@ -1,7 +1,7 @@
 {
-  "name": "point-marker-app",
+  "name": "video-marker-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "@tanstack/react-query": "^5.100.5",
     "jotai": "^2.19.1",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "react-icons": "^5.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

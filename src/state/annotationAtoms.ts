@@ -14,12 +14,19 @@ export const emptyAnnotations: AnnotationState = {
   lineOccurrencesByLineId: {},
 };
 
+export const selectedProjectIdAtom = atom<string | null>(null);
+
+export const imageSetByPaneAtom = atom<Record<PaneSide, ImageSet | null>>({
+  left: null,
+  right: null,
+});
+
 export const selectedImageSetIdByPaneAtom = atom<Record<PaneSide, string | null>>({
   left: null,
   right: null,
 });
 
-export const imageSetByPaneAtom = atom<Record<PaneSide, ImageSet | null>>({
+export const selectedFrameByPaneAtom = atom<Record<PaneSide, string | null>>({
   left: null,
   right: null,
 });
@@ -34,11 +41,6 @@ export const activePointIdAtom = atom<string | null>(null);
 
 export const activeLinePointStartAtom = atom<string | null>(null);
 
-export const selectedFrameByPaneAtom = atom<Record<PaneSide, string | null>>({
-  left: null,
-  right: null,
-});
-
 export const activePointAtom = atom(get => {
   const annotations = get(annotationsAtom);
   const activePointId = get(activePointIdAtom);
@@ -52,49 +54,24 @@ export function makePointColor(index: number): string {
   return `hsl(${hue}, 85%, 55%)`;
 }
 
+export function makeObservationKey(imageSetId: string, imageId: string): string {
+  return `${imageSetId}:${imageId}`;
+}
+
 export function upsertPointPosition(
   state: AnnotationState,
   position: PointPosition,
 ): AnnotationState {
+  const observationKey = makeObservationKey(position.imageSetId, position.imageId);
+
   return {
     ...state,
     pointPositionsByPointId: {
       ...state.pointPositionsByPointId,
       [position.pointId]: {
         ...(state.pointPositionsByPointId[position.pointId] ?? {}),
-        [position.imageId]: position,
+        [observationKey]: position,
       },
     },
   };
-}
-
-export function mergeAnnotations(
-  annotations: AnnotationState[],
-): AnnotationState {
-  const merged = structuredClone(emptyAnnotations);
-
-  for (const annotation of annotations) {
-    Object.assign(merged.pointsById, annotation.pointsById);
-    Object.assign(merged.linesById, annotation.linesById);
-
-    for (const [pointId, byImage] of Object.entries(
-      annotation.pointPositionsByPointId,
-    )) {
-      merged.pointPositionsByPointId[pointId] = {
-        ...(merged.pointPositionsByPointId[pointId] ?? {}),
-        ...byImage,
-      };
-    }
-
-    for (const [lineId, byImage] of Object.entries(
-      annotation.lineOccurrencesByLineId,
-    )) {
-      merged.lineOccurrencesByLineId[lineId] = {
-        ...(merged.lineOccurrencesByLineId[lineId] ?? {}),
-        ...byImage,
-      };
-    }
-  }
-
-  return merged;
 }

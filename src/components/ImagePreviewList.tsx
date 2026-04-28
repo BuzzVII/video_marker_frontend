@@ -1,11 +1,12 @@
 import { ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAtom } from "jotai";
-import { fetchImageSets, uploadVideo } from "../api/client";
+import { useAtom, useAtomValue } from "jotai";
+import { fetchProjectImageSets, uploadVideoToProject } from "../api/client";
 import {
-  imageSetByPaneAtom,
   selectedFrameByPaneAtom,
   selectedImageSetIdByPaneAtom,
+  selectedProjectIdAtom,
+  imageSetByPaneAtom,
 } from "../state/annotationAtoms";
 import type { PaneSide } from "../types/annotations";
 
@@ -16,47 +17,41 @@ type Props = {
 export function ImagePreviewList({ side }: Props) {
   const queryClient = useQueryClient();
 
-  const [imageSetByPane] = useAtom(imageSetByPaneAtom);
+  const selectedProjectId = useAtomValue(selectedProjectIdAtom);
+  const imageSetByPane = useAtomValue(imageSetByPaneAtom);
   const [selectedImageSetIdByPane, setSelectedImageSetIdByPane] = useAtom(
     selectedImageSetIdByPaneAtom,
   );
-  const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(
-    selectedFrameByPaneAtom,
-  );
+  const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(selectedFrameByPaneAtom);
 
   const imageSet = imageSetByPane[side];
   const selectedImageSetId = selectedImageSetIdByPane[side];
 
   const imageSetsQuery = useQuery({
-    queryKey: ["imageSets"],
-    queryFn: fetchImageSets,
+    queryKey: ["projectImageSets", selectedProjectId],
+    queryFn: () => fetchProjectImageSets(selectedProjectId!),
+    enabled: selectedProjectId !== null,
   });
 
   const uploadMutation = useMutation({
-    mutationFn: uploadVideo,
+    mutationFn: (file: File) => uploadVideoToProject(selectedProjectId!, file),
     onSuccess: uploadedSet => {
-      queryClient.invalidateQueries({ queryKey: ["imageSets"] });
-
-      setSelectedImageSetIdByPane(current => ({
-        ...current,
-        [side]: uploadedSet.id,
-      }));
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["projectImageSets", selectedProjectId] });
+      setSelectedImageSetIdByPane(current => ({ ...current, [side]: uploadedSet.id }));
     },
   });
 
   function onImageSetChange(event: ChangeEvent<HTMLSelectElement>) {
     const nextId = event.target.value || null;
-
-    setSelectedImageSetIdByPane(current => ({
-      ...current,
-      [side]: nextId,
-    }));
+    setSelectedImageSetIdByPane(current => ({ ...current, [side]: nextId }));
+    setSelectedFrameByPane(current => ({ ...current, [side]: null }));
   }
 
   function onVideoUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
 
-    if (file) {
+    if (file && selectedProjectId) {
       uploadMutation.mutate(file);
     }
 
@@ -64,18 +59,22 @@ export function ImagePreviewList({ side }: Props) {
   }
 
   function selectFrame(frameId: string) {
-    setSelectedFrameByPane(current => ({
-      ...current,
+    setSelectedFrameByPane({
+      ...selectedFrameByPane,
       [side]: frameId,
-    }));
+    });
   }
 
   return (
     <aside className="preview-column">
       <div className="image-set-controls">
-        <select value={selectedImageSetId ?? ""} onChange={onImageSetChange}>
+        <select
+          value={selectedImageSetId ?? ""}
+          onChange={onImageSetChange}
+          disabled={!selectedProjectId || imageSetsQuery.isLoading}
+        >
           <option value="" disabled>
-            Select image set
+            {imageSetsQuery.isLoading ? "Loading image sets..." : "Select image set"}
           </option>
 
           {(imageSetsQuery.data ?? []).map(set => (
@@ -90,15 +89,13 @@ export function ImagePreviewList({ side }: Props) {
           <input
             type="file"
             accept="video/*"
-            disabled={uploadMutation.isPending}
+            disabled={!selectedProjectId || uploadMutation.isPending}
             onChange={onVideoUpload}
           />
         </label>
 
         {uploadMutation.error ? (
-          <div className="inline-error">
-            Upload failed: {uploadMutation.error.message}
-          </div>
+          <div className="inline-error">Upload failed: {uploadMutation.error.message}</div>
         ) : null}
       </div>
 

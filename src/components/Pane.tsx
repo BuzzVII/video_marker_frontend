@@ -1,12 +1,9 @@
 import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
-import { fetchAnnotations, fetchImageSet } from "../api/client";
+import { fetchImageSet } from "../api/client";
 import {
-  annotationsAtom,
-  emptyAnnotations,
   imageSetByPaneAtom,
-  mergeAnnotations,
   selectedFrameByPaneAtom,
   selectedImageSetIdByPaneAtom,
 } from "../state/annotationAtoms";
@@ -21,13 +18,10 @@ type Props = {
 
 export function Pane({ side }: Props) {
   const selectedImageSetIdByPane = useAtomValue(selectedImageSetIdByPaneAtom);
-  const selectedImageSetId = selectedImageSetIdByPane[side];
-
   const [imageSetByPane, setImageSetByPane] = useAtom(imageSetByPaneAtom);
-  const [, setAnnotations] = useAtom(annotationsAtom);
-  const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(
-    selectedFrameByPaneAtom,
-  );
+  const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(selectedFrameByPaneAtom);
+
+  const selectedImageSetId = selectedImageSetIdByPane[side];
 
   const imageSetQuery = useQuery({
     queryKey: ["imageSet", selectedImageSetId],
@@ -35,65 +29,42 @@ export function Pane({ side }: Props) {
     enabled: selectedImageSetId !== null,
   });
 
-  const annotationQuery = useQuery({
-    queryKey: ["annotations", selectedImageSetId],
-    queryFn: () => fetchAnnotations(selectedImageSetId!),
-    enabled: selectedImageSetId !== null,
-  });
-  const queryClient = useQueryClient();
-
   useEffect(() => {
+    const imageSet = imageSetQuery.data ?? null;
+
     setImageSetByPane(current => ({
       ...current,
-      [side]: imageSetQuery.data ?? null,
+      [side]: imageSet,
     }));
 
-    const firstFrameId = imageSetQuery.data?.frames[0]?.id ?? null;
+    if (!imageSet) {
+      setSelectedFrameByPane(current => ({ ...current, [side]: null }));
+      return;
+    }
 
-    setSelectedFrameByPane(current => ({
-      ...current,
-      [side]: firstFrameId,
-    }));
-  }, [imageSetQuery.data, side, setImageSetByPane, setSelectedFrameByPane]);
+    const currentFrameId = selectedFrameByPane[side];
+    const currentFrameStillExists = imageSet.frames.some(frame => frame.id === currentFrameId);
 
-  useEffect(() => {
-    const leftId = selectedImageSetIdByPane.left;
-    const rightId = selectedImageSetIdByPane.right;
-  
-    const left = leftId
-      ? queryClient.getQueryData(["annotations", leftId])
-      : undefined;
-  
-    const right = rightId
-      ? queryClient.getQueryData(["annotations", rightId])
-      : undefined;
-  
-    setAnnotations(
-      mergeAnnotations([
-        (left as typeof emptyAnnotations | undefined) ?? emptyAnnotations,
-        (right as typeof emptyAnnotations | undefined) ?? emptyAnnotations,
-      ]),
-    );
-  }, [
-    annotationQuery.data,
-    queryClient,
-    selectedImageSetIdByPane.left,
-    selectedImageSetIdByPane.right,
-    setAnnotations,
-  ]);
+    if (!currentFrameStillExists) {
+      setSelectedFrameByPane(current => ({
+        ...current,
+        [side]: imageSet.frames[0]?.id ?? null,
+      }));
+    }
+  }, [imageSetQuery.data, selectedFrameByPane, setImageSetByPane, setSelectedFrameByPane, side]);
 
   const imageSet = imageSetByPane[side];
   const selectedFrameId = selectedFrameByPane[side];
-  const selectedFrame =
-    imageSet?.frames.find(frame => frame.id === selectedFrameId) ?? null;
+  const selectedFrame = imageSet?.frames.find(frame => frame.id === selectedFrameId) ?? null;
 
   const preview = <ImagePreviewList side={side} />;
-
   const editor = (
     <section className="editor-column">
       <Toolbar />
-      {selectedFrame ? (
-        <FrameCanvas side={side} frame={selectedFrame} />
+      {imageSetQuery.isLoading ? (
+        <div className="empty-frame">Loading frames...</div>
+      ) : selectedFrame && imageSet ? (
+        <FrameCanvas side={side} imageSetId={imageSet.id} frame={selectedFrame} />
       ) : (
         <div className="empty-frame">No frame selected</div>
       )}

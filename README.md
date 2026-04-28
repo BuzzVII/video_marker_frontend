@@ -1,101 +1,123 @@
 # Video Marker Frontend
 
-A React frontend for marking correspondence points and lines across image frames extracted from video.
+React frontend for marking correspondence points and lines across video frames and image sets.
 
-The goal of this app is to help identify shared visual features across multiple views of a house, then use those correspondences as input data for generating floor plans and simple 3D reconstructions.
+The goal of the app is to collect shared visual features across multiple views of a house, then use those correspondences as input data for floor plan generation and simple 3D reconstruction.
 
-## Purpose
+## Backend model
 
-The app is designed for workflows where a user has video or image frames of a house interior and wants to mark features that appear in more than one frame.
-
-Examples include:
+This frontend targets the project scoped backend API from:
 
 ```text
-Point 1: same room corner visible in frame 3, frame 7, and frame 12
-Point 2: same window corner visible in frame 4 and frame 9
-Line 1: wall edge between point 1 and point 2 in frame 7
+https://github.com/BuzzVII/video_marker_backend
 ```
 
-These marked correspondences can later be used by geometry, optimisation, or reconstruction algorithms to estimate camera positions, infer wall layouts, and generate floor plans.
+The app assumes this ownership model:
 
-## Current Status
+```text
+Project
+  has many image sets
+  has one annotation document
 
-This is an early frontend scaffold.
+ImageSet
+  has many frames
 
-It currently includes:
+AnnotationDocument
+  stores points and lines observed across any image set in the project
+```
 
-- Two mirrored side by side panes
-- Image set selector
-- Mock video frame preview list
-- Selected frame viewer
-- Toolbar for annotation tools
-- Point creation
-- Point movement
-- Point deletion
-- Point saving
-- Active point colour display
-- Line creation by joining two points
-- Mock API layer
-- TanStack Query for server style data fetching
-- Jotai for local UI and annotation state
+Point and line observations now include both `imageSetId` and `imageId`, which allows a single correspondence point to appear across frames from any image set in the selected project.
 
-The API calls are currently mocked. Real endpoints can be filled in later in:
+## API endpoints used
+
+```text
+GET  /api/health
+GET  /api/projects
+POST /api/projects
+GET  /api/projects/{project_id}
+GET  /api/projects/{project_id}/image-sets
+POST /api/projects/{project_id}/videos/upload
+GET  /api/image-sets
+GET  /api/image-sets/{image_set_id}
+GET  /api/image-sets/{image_set_id}/frames/{frame_id}/image
+GET  /api/projects/{project_id}/annotations
+PUT  /api/projects/{project_id}/annotations
+GET  /api/projects/{project_id}/export
+```
+
+Endpoint constants are in:
 
 ```text
 src/api/endpoints.js
-src/api/mockApi.ts
 ```
 
-## Data Model
+Fetch wrappers are in:
 
-Points are global identities that can appear in multiple images.
+```text
+src/api/client.ts
+```
 
-A point is stored by point id, then image id, then position in that image.
+## UI changes in this version
+
+This version includes:
+
+* Project scoped annotation loading and saving.
+* A top navigation bar.
+* A project selector dropdown.
+* A new project button.
+* A help icon using `react-icons`.
+* An about modal for the app.
+* A zoom box that follows the cursor over the image to help with precise point selection.
+* Two mirrored annotation panes.
+* Per pane image set selection.
+* Per pane video upload into the current project.
+* Point creation, movement, deletion, and saving.
+* Line creation by joining two points.
+
+## Data model
+
+Points are global within a project.
 
 ```ts
 pointsById[pointId] = {
   id,
   color,
 }
+```
 
-pointPositionsByPointId[pointId][imageId] = {
+Point observations are keyed by point id, then by an observation key built from the image set id and frame id.
+
+```ts
+pointPositionsByPointId[pointId][`${imageSetId}:${imageId}`] = {
   pointId,
+  imageSetId,
   imageId,
   x,
   y,
 }
 ```
 
-This means one point can be observed in many frames, while each point can only appear once in a given image.
-
-Lines are stored similarly.
+Lines are also global within a project.
 
 ```ts
 linesById[lineId] = {
   id,
 }
+```
 
-lineOccurrencesByLineId[lineId][imageId] = {
+Line observations are keyed by line id, then by the same observation key.
+
+```ts
+lineOccurrencesByLineId[lineId][`${imageSetId}:${imageId}`] = {
   lineId,
+  imageSetId,
   imageId,
   startPointId,
   endPointId,
 }
 ```
 
-A line occurrence connects two existing point ids in a specific image.
-
-## Intended Workflow
-
-1. Load an image set or upload a video.
-2. Select a frame in the left pane.
-3. Mark a point on the left frame.
-4. Select a corresponding frame in the right pane.
-5. Mark the matching point in the right frame using the same active point id and colour.
-6. Repeat across as many frames as needed.
-7. Join two points to create a line where an edge, wall, doorway, or other structural feature is visible.
-8. Save the annotation data.
-9. Use the saved points and lines as input to downstream floor plan generation algorithms.
+Coordinates are stored as percentages from `0` to `100` in the frontend. The backend accepts this and converts to normalized coordinates in the reconstruction export.
 
 ## Install
 
@@ -106,7 +128,24 @@ corepack enable
 pnpm install
 ```
 
-## Development
+## Run the backend
+
+From the backend project:
+
+```bash
+cp .env.example .env
+uv sync
+uv run alembic upgrade head
+uv run fastapi dev app/main.py
+```
+
+The backend should be available at:
+
+```text
+http://127.0.0.1:8000
+```
+
+## Run the frontend
 
 ```bash
 pnpm dev
@@ -118,43 +157,36 @@ The app will usually be available at:
 http://localhost:5173/
 ```
 
+The Vite dev server proxies `/api` to `http://127.0.0.1:8000`.
+
 ## Build
 
 ```bash
 pnpm build
 ```
 
-## Preview Production Build
+## Preview production build
 
 ```bash
 pnpm preview
 ```
 
-## Main Dependencies
-
-```text
-React
-Vite
-TypeScript
-TanStack Query
-Jotai
-```
-
-## Project Structure
+## Project structure
 
 ```text
 src/
   api/
+    client.ts
     endpoints.js
-    mockApi.ts
-    mockData.ts
 
   components/
     AppLayout.tsx
     FrameCanvas.tsx
+    HelpModal.tsx
     ImagePreviewList.tsx
     Pane.tsx
     Toolbar.tsx
+    TopNav.tsx
 
   state/
     annotationAtoms.ts
@@ -167,62 +199,18 @@ src/
   index.css
 ```
 
-## API Layer
+## Intended workflow
 
-Endpoint names are defined in:
+1. Select a project from the top navigation bar, or create a new project.
+2. Upload one or more videos into the project.
+3. Select an image set in the left pane.
+4. Select another image set in the right pane.
+5. Select frames in each pane.
+6. Mark the same physical point across frames using the same active point id and colour.
+7. Join two points to mark lines such as wall edges, door edges, or window edges.
+8. Save the project annotation document.
+9. Use the backend export endpoint as input to reconstruction experiments.
 
-```text
-src/api/endpoints.js
-```
+## Long term goal
 
-Mock API behaviour is implemented in:
-
-```text
-src/api/mockApi.ts
-```
-
-When the backend exists, replace the mock functions with real `fetch` or client calls while keeping the component layer mostly unchanged.
-
-## Notes for Future Development
-
-Useful next steps:
-
-- Add real video upload and frame extraction
-- Add backend persistence for image sets and annotations
-- Add zoom and pan support for frame inspection
-- Add point and line editing panels
-- Add keyboard shortcuts
-- Add export to JSON
-- Add import from JSON
-- Add validation for incomplete correspondences
-- Add camera pose and geometry solving experiments
-- Add floor plan generation output view
-- Add 2D and 3D reconstruction previews
-
-## Annotation Semantics
-
-Coordinates are currently stored as percentages of image width and height.
-
-```ts
-x: 0 to 100
-y: 0 to 100
-```
-
-This keeps annotations independent of display size and makes them easier to map back onto the source image dimensions later.
-
-## Long Term Goal
-
-The long term goal is to turn hand marked visual correspondences into structured geometric constraints.
-
-Those constraints can then be used to estimate house layout geometry, including:
-
-- Wall directions
-- Wall intersections
-- Room boundaries
-- Door and window positions
-- Camera poses
-- Approximate scale
-- 2D floor plans
-- Simple 3D meshes
-
-This frontend is the data collection and review tool for that reconstruction workflow.
+The long term goal is to turn manually marked visual correspondences into structured geometric constraints. Those constraints can then be used to estimate camera poses, infer wall directions and intersections, recover room boundaries, and generate 2D or 3D house layout outputs.

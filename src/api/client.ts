@@ -1,18 +1,12 @@
-import { apiUrl } from "./endpoints.js";
-import type { AnnotationState, ImageSet } from "../types/annotations";
+import { API_ENDPOINTS, apiUrl } from "./endpoints.js";
+import type {
+  AnnotationState,
+  ImageSet,
+  ImageSetSummary,
+  ProjectSummary,
+} from "../types/annotations";
 
-export type ImageSetSummary = {
-  id: string;
-  name: string;
-  created_at: string;
-  frame_count: number;
-  source_type: string;
-};
-
-async function requestJson<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), {
     ...init,
     headers: {
@@ -28,7 +22,7 @@ async function requestJson<T>(
       const body = await response.json();
       detail = body.detail ?? JSON.stringify(body);
     } catch {
-      // Keep status text.
+      // Keep the original status text.
     }
 
     throw new Error(`${response.status} ${detail}`);
@@ -38,15 +32,36 @@ async function requestJson<T>(
 }
 
 export async function fetchHealth(): Promise<{ ok: boolean }> {
-  return requestJson("/api/health");
+  return requestJson(API_ENDPOINTS.health);
+}
+
+export async function fetchProjects(): Promise<ProjectSummary[]> {
+  return requestJson(API_ENDPOINTS.projects);
+}
+
+export async function createProject(name: string): Promise<ProjectSummary> {
+  return requestJson(API_ENDPOINTS.projects, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function fetchProject(projectId: string): Promise<ProjectSummary> {
+  return requestJson(API_ENDPOINTS.project(projectId));
+}
+
+export async function fetchProjectImageSets(
+  projectId: string,
+): Promise<ImageSetSummary[]> {
+  return requestJson(API_ENDPOINTS.projectImageSets(projectId));
 }
 
 export async function fetchImageSets(): Promise<ImageSetSummary[]> {
-  return requestJson("/api/image-sets");
+  return requestJson(API_ENDPOINTS.imageSets);
 }
 
 export async function fetchImageSet(id: string): Promise<ImageSet> {
-  const imageSet = await requestJson<ImageSet>(`/api/image-sets/${id}`);
+  const imageSet = await requestJson<ImageSet>(API_ENDPOINTS.imageSet(id));
 
   return {
     ...imageSet,
@@ -58,31 +73,34 @@ export async function fetchImageSet(id: string): Promise<ImageSet> {
 }
 
 export async function fetchAnnotations(
-  imageSetId: string,
+  projectId: string,
 ): Promise<AnnotationState> {
-  return requestJson(`/api/image-sets/${imageSetId}/annotations`);
+  return requestJson(API_ENDPOINTS.annotations(projectId));
 }
 
 export async function saveAnnotations(
-  imageSetId: string,
+  projectId: string,
   annotations: AnnotationState,
 ): Promise<AnnotationState> {
-  return requestJson(`/api/image-sets/${imageSetId}/annotations`, {
+  return requestJson(API_ENDPOINTS.saveAnnotations(projectId), {
     method: "PUT",
     body: JSON.stringify(annotations),
   });
 }
 
-export async function uploadVideo(file: File): Promise<ImageSetSummary> {
+export async function uploadVideoToProject(
+  projectId: string,
+  file: File,
+): Promise<ImageSetSummary> {
   const formData = new FormData();
   formData.append("file", file);
 
-  return requestJson("/api/videos/upload", {
+  return requestJson(API_ENDPOINTS.uploadVideoToProject(projectId), {
     method: "POST",
     body: formData,
   });
 }
 
-export async function fetchReconstructionExport(imageSetId: string) {
-  return requestJson(`/api/image-sets/${imageSetId}/export`);
+export async function fetchReconstructionExport(projectId: string) {
+  return requestJson(API_ENDPOINTS.exportAnnotations(projectId));
 }
