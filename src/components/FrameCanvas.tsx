@@ -365,6 +365,13 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
   const zoomLeft = clamp(cursor.canvasX + 18, 12, Math.max(12, imageRect.left + imageRect.width - zoomBoxSize - 12));
   const zoomTop = clamp(cursor.canvasY + 18, 12, Math.max(12, imageRect.top + imageRect.height - zoomBoxSize - 12));
 
+  function pointToRenderedImagePixels(point: { x: number; y: number }) {
+    return {
+      x: (point.x / 100) * imageRect.width,
+      y: (point.y / 100) * imageRect.height,
+    };
+  }
+
   return (
     <div
       ref={canvasRef}
@@ -384,7 +391,7 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
 
       <svg
         className="annotation-layer"
-        viewBox="0 0 100 100"
+        viewBox={`0 0 ${Math.max(1, imageRect.width)} ${Math.max(1, imageRect.height)}`}
         preserveAspectRatio="none"
         style={{
           left: imageRect.left,
@@ -399,13 +406,16 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
 
           if (!start || !end) return null;
 
+          const startPx = pointToRenderedImagePixels(start);
+          const endPx = pointToRenderedImagePixels(end);
+
           return (
             <line
               key={line.lineId}
-              x1={start.x}
-              y1={start.y}
-              x2={end.x}
-              y2={end.y}
+              x1={startPx.x}
+              y1={startPx.y}
+              x2={endPx.x}
+              y2={endPx.y}
               className="annotation-line"
             />
           );
@@ -413,23 +423,22 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
 
         {visiblePoints.map(point => {
           const definition = annotations.pointsById[point.pointId];
+          const pointPx = pointToRenderedImagePixels(point);
 
           return (
             <g key={point.pointId}>
               <circle
-                cx={point.x}
-                cy={point.y}
-                r="1.4"
+                cx={pointPx.x}
+                cy={pointPx.y}
+                r="6"
                 fill={definition?.color ?? "white"}
                 stroke={activePointId === point.pointId ? "white" : "black"}
-                strokeWidth="0.35"
-                vectorEffect="non-scaling-stroke"
+                strokeWidth="1.5"
               />
               <text
-                x={point.x + 1.8}
-                y={point.y - 1.8}
+                x={pointPx.x + 9}
+                y={pointPx.y - 9}
                 className="point-label"
-                vectorEffect="non-scaling-stroke"
               >
                 {point.pointId}
               </text>
