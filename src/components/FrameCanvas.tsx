@@ -1,4 +1,5 @@
-import { MouseEvent, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { useAtom } from "jotai";
 import {
   activeLinePointStartAtom,
@@ -22,12 +23,34 @@ type Props = {
   frame: ImageFrame;
 };
 
-type CursorState = {
-  visible: boolean;
+type RenderedImageRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+type PointerImageCoords = {
   x: number;
   y: number;
+  canvasX: number;
+  canvasY: number;
+  insideImage: boolean;
+};
+
+type CursorState = {
+  visible: boolean;
+  canvasX: number;
+  canvasY: number;
   percentX: number;
   percentY: number;
+};
+
+const emptyImageRect: RenderedImageRect = {
+  left: 0,
+  top: 0,
+  width: 0,
+  height: 0,
 };
 
 function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -39,15 +62,19 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function FrameCanvas({ imageSetId, frame }: Props) {
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
   const [annotations, setAnnotations] = useAtom(annotationsAtom);
   const [toolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const [lineStartPointId, setLineStartPointId] = useAtom(activeLinePointStartAtom);
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
+  const [imageRect, setImageRect] = useState<RenderedImageRect>(emptyImageRect);
   const [cursor, setCursor] = useState<CursorState>({
     visible: false,
-    x: 0,
-    y: 0,
+    canvasX: 0,
+    canvasY: 0,
     percentX: 0,
     percentY: 0,
   });
@@ -66,14 +93,84 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
       .filter(Boolean) as LineOccurrence[];
   }, [annotations.lineOccurrencesByLineId, observationKey]);
 
-  function imageCoords(event: MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
+  const updateImageRect = useCallback(() => {
+    const canvas = canvasRef.current;
+    const image = imgRef.current;
+
+    if (!canvas) return;
+
+    const canvasBounds = canvas.getBoundingClientRect();
+    const naturalWidth = image?.naturalWidth || frame.width || canvasBounds.width;
+    const naturalHeight = image?.naturalHeight || frame.height || canvasBounds.height;
+
+    if (
+      canvasBounds.width <= 0 ||
+      canvasBounds.height <= 0 ||
+      naturalWidth <= 0 ||
+      naturalHeight <= 0
+    ) {
+      setImageRect(emptyImageRect);
+      return;
+    }
+
+    const canvasAspect = canvasBounds.width / canvasBounds.height;
+    const imageAspect = naturalWidth / naturalHeight;
+
+    let width = canvasBounds.width;
+    let height = canvasBounds.height;
+    let left = 0;
+    let top = 0;
+
+    if (canvasAspect > imageAspect) {
+      height = canvasBounds.height;
+      width = height * imageAspect;
+      left = (canvasBounds.width - width) / 2;
+    } else {
+      width = canvasBounds.width;
+      height = width / imageAspect;
+      top = (canvasBounds.height - height) / 2;
+    }
+
+    setImageRect({ left, top, width, height });
+  }, [frame.height, frame.width]);
+
+  useEffect(() => {
+    updateImageRect();
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const resizeObserver = new ResizeObserver(updateImageRect);
+    resizeObserver.observe(canvas);
+
+    return () => resizeObserver.disconnect();
+  }, [updateImageRect]);
+
+  function imageCoords(event: MouseEvent<HTMLDivElement>): PointerImageCoords {
+    const canvas = canvasRef.current;
+    const fallbackBounds = event.currentTarget.getBoundingClientRect();
+    const canvasBounds = canvas?.getBoundingClientRect() ?? fallbackBounds;
+
+    const canvasX = event.clientX - canvasBounds.left;
+    const canvasY = event.clientY - canvasBounds.top;
+
+    const imageX = canvasX - imageRect.left;
+    const imageY = canvasY - imageRect.top;
+    const hasImageRect = imageRect.width > 0 && imageRect.height > 0;
+
+    const insideImage =
+      hasImageRect &&
+      imageX >= 0 &&
+      imageX <= imageRect.width &&
+      imageY >= 0 &&
+      imageY <= imageRect.height;
 
     return {
-      x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
-      y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
-      screenX: event.clientX - rect.left,
-      screenY: event.clientY - rect.top,
+      x: hasImageRect ? clamp((imageX / imageRect.width) * 100, 0, 100) : 0,
+      y: hasImageRect ? clamp((imageY / imageRect.height) * 100, 0, 100) : 0,
+      canvasX,
+      canvasY,
+      insideImage,
     };
   }
 
@@ -206,6 +303,9 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
 
   function onCanvasMouseDown(event: MouseEvent<HTMLDivElement>) {
     const pos = imageCoords(event);
+
+    if (!pos.insideImage) return;
+
     const hitPoint = nearestPoint(pos);
 
     if (hitPoint) {
@@ -236,9 +336,9 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
     const pos = imageCoords(event);
 
     setCursor({
-      visible: true,
-      x: pos.screenX,
-      y: pos.screenY,
+      visible: pos.insideImage,
+      canvasX: pos.canvasX,
+      canvasY: pos.canvasY,
       percentX: pos.x,
       percentY: pos.y,
     });
@@ -256,21 +356,43 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
     setCursor(current => ({ ...current, visible: false }));
   }
 
-  const zoomBackgroundPosition = `${cursor.percentX}% ${cursor.percentY}%`;
-  const zoomLeft = clamp(cursor.x + 18, 12, 1000);
-  const zoomTop = clamp(cursor.y + 18, 12, 1000);
+  const zoomBoxSize = 148;
+  const zoomScale = 3.6;
+  const zoomBackgroundWidth = imageRect.width * zoomScale;
+  const zoomBackgroundHeight = imageRect.height * zoomScale;
+  const zoomBackgroundX = -((cursor.percentX / 100) * zoomBackgroundWidth - zoomBoxSize / 2);
+  const zoomBackgroundY = -((cursor.percentY / 100) * zoomBackgroundHeight - zoomBoxSize / 2);
+  const zoomLeft = clamp(cursor.canvasX + 18, 12, Math.max(12, imageRect.left + imageRect.width - zoomBoxSize - 12));
+  const zoomTop = clamp(cursor.canvasY + 18, 12, Math.max(12, imageRect.top + imageRect.height - zoomBoxSize - 12));
 
   return (
     <div
+      ref={canvasRef}
       className="frame-canvas"
       onMouseDown={onCanvasMouseDown}
       onMouseMove={onCanvasMouseMove}
       onMouseUp={onCanvasMouseUp}
       onMouseLeave={onCanvasMouseLeave}
     >
-      <img src={frame.url} alt={frame.label} draggable={false} />
+      <img
+        ref={imgRef}
+        src={frame.url}
+        alt={frame.label}
+        draggable={false}
+        onLoad={updateImageRect}
+      />
 
-      <svg className="annotation-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <svg
+        className="annotation-layer"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        style={{
+          left: imageRect.left,
+          top: imageRect.top,
+          width: imageRect.width,
+          height: imageRect.height,
+        }}
+      >
         {visibleLines.map(line => {
           const start = annotations.pointPositionsByPointId[line.startPointId]?.[observationKey];
           const end = annotations.pointPositionsByPointId[line.endPointId]?.[observationKey];
@@ -323,7 +445,8 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
             left: zoomLeft,
             top: zoomTop,
             backgroundImage: `url(${frame.url})`,
-            backgroundPosition: zoomBackgroundPosition,
+            backgroundSize: `${zoomBackgroundWidth}px ${zoomBackgroundHeight}px`,
+            backgroundPosition: `${zoomBackgroundX}px ${zoomBackgroundY}px`,
           }}
         >
           <span className="zoom-crosshair horizontal" />
