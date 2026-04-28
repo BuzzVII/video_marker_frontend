@@ -430,10 +430,10 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
               <circle
                 cx={pointPx.x}
                 cy={pointPx.y}
-                r="6"
+                r="3"
                 fill={definition?.color ?? "white"}
                 stroke={activePointId === point.pointId ? "white" : "black"}
-                strokeWidth="1.5"
+                strokeWidth="1.0"
               />
               <text
                 x={pointPx.x + 9}
