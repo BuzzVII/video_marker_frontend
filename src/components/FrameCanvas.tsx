@@ -343,7 +343,7 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
       percentY: pos.y,
     });
 
-    if (!draggingPointId) return;
+    if (!draggingPointId || !pos.insideImage) return;
     movePoint(draggingPointId, pos);
   }
 
@@ -362,8 +362,36 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
   const zoomBackgroundHeight = imageRect.height * zoomScale;
   const zoomBackgroundX = -((cursor.percentX / 100) * zoomBackgroundWidth - zoomBoxSize / 2);
   const zoomBackgroundY = -((cursor.percentY / 100) * zoomBackgroundHeight - zoomBoxSize / 2);
-  const zoomLeft = clamp(cursor.canvasX + 18, 12, Math.max(12, imageRect.left + imageRect.width - zoomBoxSize - 12));
-  const zoomTop = clamp(cursor.canvasY + 18, 12, Math.max(12, imageRect.top + imageRect.height - zoomBoxSize - 12));
+  const zoomLeft = clamp(
+    cursor.canvasX + 18,
+    12,
+    Math.max(12, imageRect.left + imageRect.width - zoomBoxSize - 12),
+  );
+  const zoomTop = clamp(
+    cursor.canvasY + 18,
+    12,
+    Math.max(12, imageRect.top + imageRect.height - zoomBoxSize - 12),
+  );
+
+  const zoomPointMarkers = cursor.visible
+    ? visiblePoints
+        .map(point => {
+          const left = zoomBoxSize / 2 + ((point.x - cursor.percentX) / 100) * zoomBackgroundWidth;
+          const top = zoomBoxSize / 2 + ((point.y - cursor.percentY) / 100) * zoomBackgroundHeight;
+          return {
+            point,
+            left,
+            top,
+            color: annotations.pointsById[point.pointId]?.color ?? "white",
+          };
+        })
+        .filter(marker =>
+          marker.left >= -12 &&
+          marker.left <= zoomBoxSize + 12 &&
+          marker.top >= -12 &&
+          marker.top <= zoomBoxSize + 12,
+        )
+    : [];
 
   function pointToRenderedImagePixels(point: { x: number; y: number }) {
     return {
@@ -458,6 +486,22 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
             backgroundPosition: `${zoomBackgroundX}px ${zoomBackgroundY}px`,
           }}
         >
+          {zoomPointMarkers.map(marker => (
+            <span
+              key={marker.point.pointId}
+              className={
+                marker.point.pointId === activePointId
+                  ? "zoom-point-marker active"
+                  : "zoom-point-marker"
+              }
+              style={{
+                left: marker.left,
+                top: marker.top,
+                background: marker.color,
+              }}
+              title={marker.point.pointId}
+            />
+          ))}
           <span className="zoom-crosshair horizontal" />
           <span className="zoom-crosshair vertical" />
           <span className="zoom-coordinates">

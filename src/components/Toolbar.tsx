@@ -3,6 +3,7 @@ import { useAtom, useAtomValue } from "jotai";
 import { saveAnnotations } from "../api/client";
 import {
   activePointAtom,
+  activePointIdAtom,
   annotationsAtom,
   selectedProjectIdAtom,
   toolModeAtom,
@@ -20,9 +21,14 @@ export function Toolbar() {
   const queryClient = useQueryClient();
 
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
+  const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const annotations = useAtomValue(annotationsAtom);
   const selectedProjectId = useAtomValue(selectedProjectIdAtom);
   const activePoint = useAtomValue(activePointAtom);
+
+  const pointOptions = Object.values(annotations.pointsById).sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true }),
+  );
 
   const saveMutation = useMutation({
     mutationFn: () => saveAnnotations(selectedProjectId!, annotations),
@@ -53,13 +59,27 @@ export function Toolbar() {
         {saveMutation.isPending ? "Saving..." : "Save points"}
       </button>
 
-      <div className="active-point">
+      <label className="active-point-picker">
         <span>active point</span>
+        <select
+          value={activePointId ?? ""}
+          onChange={event => setActivePointId(event.target.value || null)}
+        >
+          <option value="">New point</option>
+          {pointOptions.map(point => (
+            <option key={point.id} value={point.id}>
+              {point.id}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="active-point">
         <span
           className="active-point-swatch"
           style={{ background: activePoint?.color ?? "transparent" }}
         />
-        <span>{activePoint?.id ?? "none"}</span>
+        <span>{activePoint?.id ?? "new"}</span>
       </div>
 
       {saveMutation.error ? (

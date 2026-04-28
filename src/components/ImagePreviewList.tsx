@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 import { fetchProjectImageSets, uploadVideoToProject } from "../api/client";
 import {
+  annotationsAtom,
+  imageSetByPaneAtom,
+  makeObservationKey,
   selectedFrameByPaneAtom,
   selectedImageSetIdByPaneAtom,
   selectedProjectIdAtom,
-  imageSetByPaneAtom,
 } from "../state/annotationAtoms";
 import type { PaneSide } from "../types/annotations";
 
@@ -19,12 +21,14 @@ export function ImagePreviewList({ side }: Props) {
 
   const selectedProjectId = useAtomValue(selectedProjectIdAtom);
   const imageSetByPane = useAtomValue(imageSetByPaneAtom);
+  const annotations = useAtomValue(annotationsAtom);
   const [selectedImageSetIdByPane, setSelectedImageSetIdByPane] = useAtom(
     selectedImageSetIdByPaneAtom,
   );
   const [selectedFrameByPane, setSelectedFrameByPane] = useAtom(selectedFrameByPaneAtom);
 
   const imageSet = imageSetByPane[side];
+  const imageSetId = imageSet?.id;
   const selectedImageSetId = selectedImageSetIdByPane[side];
 
   const imageSetsQuery = useQuery({
@@ -102,15 +106,29 @@ export function ImagePreviewList({ side }: Props) {
       <div className="preview-list">
         {(imageSet?.frames ?? []).map(frame => {
           const selected = selectedFrameByPane[side] === frame.id;
+          const observationKey = imageSetId ? makeObservationKey(imageSetId, frame.id) : "";
+          const hasPoint = Object.values(annotations.pointPositionsByPointId).some(
+            byObservation => byObservation[observationKey] !== undefined,
+          );
+
+          const className = [
+            "preview-item",
+            selected ? "selected" : "",
+            hasPoint ? "has-points" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return (
             <button
               key={frame.id}
-              className={selected ? "preview-item selected" : "preview-item"}
+              className={className}
+              type="button"
               onClick={() => selectFrame(frame.id)}
             >
               <img src={frame.url} alt={frame.label} />
               <span>{frame.label}</span>
+              {hasPoint ? <span className="preview-point-indicator">points</span> : null}
             </button>
           );
         })}

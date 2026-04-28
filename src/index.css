@@ -472,3 +472,56 @@ select:disabled,
     display: none;
   }
 }
+
+.preview-item.has-points {
+  border-color: #65789c;
+  background: #30394c;
+}
+
+.preview-item.has-points.selected {
+  border-color: #c7d8ff;
+  background: #3d4d70;
+}
+
+.preview-point-indicator {
+  display: inline-flex;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #edf3ff;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.active-point-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd3e3;
+}
+
+.active-point-picker select {
+  min-width: 110px;
+  background: #222838;
+  color: #f5f5f5;
+  border: 1px solid #3a4358;
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+
+.zoom-point-marker {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  margin-left: -6.5px;
+  margin-top: -6.5px;
+  border: 2px solid black;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px white;
+  z-index: 2;
+}
+
+.zoom-point-marker.active {
+  border-color: white;
+  box-shadow: 0 0 0 2px black;
+}
