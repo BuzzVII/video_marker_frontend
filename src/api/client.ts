@@ -1,6 +1,7 @@
 import { API_ENDPOINTS, apiUrl } from "./endpoints.js";
 import type { AnnotationState, ImageSet, ImageSetSummary, ProjectSummary } from "../types/annotations";
 import type { EdgeLengthConstraint, ReconstructionModel } from "../types/reconstruction";
+import { normalizeReconstructionModel } from "../utils/reconstructionModel";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), {
@@ -88,7 +89,8 @@ export async function fetchReconstructionExport(projectId: string) {
 }
 
 export async function fetchLatestModel(projectId: string): Promise<ReconstructionModel | null> {
-  return requestJson(API_ENDPOINTS.latestModel(projectId));
+  const raw = await requestJson<unknown | null>(API_ENDPOINTS.latestModel(projectId));
+  return normalizeReconstructionModel(raw, projectId);
 }
 
 export async function createModel(projectId: string, model: ReconstructionModel): Promise<ReconstructionModel> {

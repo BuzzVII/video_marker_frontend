@@ -4,8 +4,10 @@ import { CuboidMesh } from "./CuboidMesh";
 
 export function CuboidScene() {
   const [model] = useAtom(newestModelAtom);
+  const cuboidsById = model?.cuboidsById ?? {};
+  const cuboids = Object.values(cuboidsById).filter(Boolean);
 
-  if (!model || Object.keys(model.cuboidsById).length === 0) {
+  if (cuboids.length === 0) {
     return (
       <mesh position={[0, 0, 0.05]}>
         <boxGeometry args={[1, 1, 0.1]} />
@@ -16,7 +18,7 @@ export function CuboidScene() {
 
   return (
     <group>
-      {Object.values(model.cuboidsById).map(cuboid => (
+      {cuboids.map(cuboid => (
         <CuboidMesh key={cuboid.id} cuboid={cuboid} />
       ))}
     </group>

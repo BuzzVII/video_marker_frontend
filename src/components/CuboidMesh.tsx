@@ -59,7 +59,7 @@ export function CuboidMesh({ cuboid }: Props) {
     stop(event);
     if (!model) return;
     if (mode === "delete-cuboid") {
-      const nextCuboids = { ...model.cuboidsById };
+      const nextCuboids = { ...(model.cuboidsById ?? {}) };
       delete nextCuboids[cuboid.id];
       setModel({
         ...model,

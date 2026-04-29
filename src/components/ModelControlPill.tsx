@@ -29,11 +29,11 @@ export function ModelControlPill() {
 
   function addCuboid() {
     if (!model) return;
-    const cuboid = makeDefaultCuboid(Object.keys(model.cuboidsById).length);
+    const cuboid = makeDefaultCuboid(Object.keys(model.cuboidsById ?? {}).length);
     const nextModel = {
       ...model,
       cuboidsById: {
-        ...model.cuboidsById,
+        ...(model.cuboidsById ?? {}),
         [cuboid.id]: cuboid,
       },
       activeCuboidId: cuboid.id,

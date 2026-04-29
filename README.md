@@ -301,3 +301,9 @@ The Zed settings enable format on save and TypeScript language server preference
 ## Long term goal
 
 The long term goal is to turn manually marked visual correspondences, cuboid structure, and measured edge lengths into structured geometric constraints. Those constraints can then be used to estimate camera poses, infer wall directions and intersections, recover room boundaries, and generate 2D or 3D house layout outputs.
+
+## Layout and empty model handling update
+
+The image annotation panel and the newest 3D model panel are kept side by side at all viewport widths. Narrow screens now use horizontal scrolling instead of stacking the 3D model underneath the image panel. This keeps the annotation and reconstruction contexts visible as a two panel workspace.
+
+The model loading path now normalises incomplete or backend wrapped model payloads before the 3D scene renders. The frontend accepts either the direct reconstruction JSON shape or a backend record containing `data_json`. Missing `cuboidsById`, `pointVertexConstraintsById`, or `edgeLengthConstraintsById` are treated as empty objects so an empty project or not yet initialised reconstruction model does not crash the React Three scene.

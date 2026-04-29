@@ -30,7 +30,7 @@ export function EdgeLengthModal() {
     setModel({
       ...model,
       edgeLengthConstraintsById: {
-        ...model.edgeLengthConstraintsById,
+        ...(model.edgeLengthConstraintsById ?? {}),
         [constraint.id]: constraint,
       },
       activeEdge: selectedEdge,
