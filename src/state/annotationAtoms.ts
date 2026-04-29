@@ -1,11 +1,5 @@
 import { atom } from "jotai";
-import type {
-  AnnotationState,
-  ImageSet,
-  PaneSide,
-  PointPosition,
-  ToolMode,
-} from "../types/annotations";
+import type { AnnotationState, ImageSet, PointPosition, ToolMode } from "../types/annotations";
 
 export const emptyAnnotations: AnnotationState = {
   pointsById: {},
@@ -15,36 +9,17 @@ export const emptyAnnotations: AnnotationState = {
 };
 
 export const selectedProjectIdAtom = atom<string | null>(null);
-
-export const imageSetByPaneAtom = atom<Record<PaneSide, ImageSet | null>>({
-  left: null,
-  right: null,
-});
-
-export const selectedImageSetIdByPaneAtom = atom<Record<PaneSide, string | null>>({
-  left: null,
-  right: null,
-});
-
-export const selectedFrameByPaneAtom = atom<Record<PaneSide, string | null>>({
-  left: null,
-  right: null,
-});
-
-export const annotationsAtom = atom<AnnotationState>(
-  structuredClone(emptyAnnotations),
-);
-
+export const selectedImageSetIdAtom = atom<string | null>(null);
+export const imageSetAtom = atom<ImageSet | null>(null);
+export const selectedFrameIdAtom = atom<string | null>(null);
+export const annotationsAtom = atom<AnnotationState>(structuredClone(emptyAnnotations));
 export const toolModeAtom = atom<ToolMode>("new-point");
-
 export const activePointIdAtom = atom<string | null>(null);
-
 export const activeLinePointStartAtom = atom<string | null>(null);
 
 export const activePointAtom = atom(get => {
   const annotations = get(annotationsAtom);
   const activePointId = get(activePointIdAtom);
-
   if (!activePointId) return null;
   return annotations.pointsById[activePointId] ?? null;
 });
@@ -58,12 +33,8 @@ export function makeObservationKey(imageSetId: string, imageId: string): string 
   return `${imageSetId}:${imageId}`;
 }
 
-export function upsertPointPosition(
-  state: AnnotationState,
-  position: PointPosition,
-): AnnotationState {
+export function upsertPointPosition(state: AnnotationState, position: PointPosition): AnnotationState {
   const observationKey = makeObservationKey(position.imageSetId, position.imageId);
-
   return {
     ...state,
     pointPositionsByPointId: {

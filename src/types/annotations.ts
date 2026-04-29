@@ -1,10 +1,4 @@
-export type PaneSide = "left" | "right";
-
-export type ToolMode =
-  | "new-point"
-  | "move-point"
-  | "delete-point"
-  | "join-points";
+export type ToolMode = "new-point" | "move-point" | "delete-point" | "join-points";
 
 export type ProjectSummary = {
   id: string;
@@ -43,6 +37,7 @@ export type ImageSet = {
 export type PointDefinition = {
   id: string;
   color: string;
+  label?: string;
 };
 
 export type PointPosition = {
@@ -55,6 +50,7 @@ export type PointPosition = {
 
 export type LineDefinition = {
   id: string;
+  label?: string;
 };
 
 export type LineOccurrence = {

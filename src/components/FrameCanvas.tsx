@@ -1,183 +1,52 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent } from "react";
-import { useAtom } from "jotai";
-import {
-  activeLinePointStartAtom,
-  activePointIdAtom,
-  annotationsAtom,
-  makeObservationKey,
-  makePointColor,
-  toolModeAtom,
-  upsertPointPosition,
-} from "../state/annotationAtoms";
-import type {
-  ImageFrame,
-  LineOccurrence,
-  PaneSide,
-  PointPosition,
-} from "../types/annotations";
+import { MouseEvent, useMemo, useState } from "react";
+import { useAtom, useAtomValue } from "jotai";
+import { activeLinePointStartAtom, activePointIdAtom, annotationsAtom, makeObservationKey, makePointColor, selectedImageSetIdAtom, toolModeAtom, upsertPointPosition } from "../state/annotationAtoms";
+import type { ImageFrame, PointPosition } from "../types/annotations";
 
 type Props = {
-  side: PaneSide;
-  imageSetId: string;
   frame: ImageFrame;
 };
 
-type RenderedImageRect = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
+type PointLike = { x: number; y: number };
 
-type PointerImageCoords = {
-  x: number;
-  y: number;
-  canvasX: number;
-  canvasY: number;
-  insideImage: boolean;
-};
-
-type CursorState = {
-  visible: boolean;
-  canvasX: number;
-  canvasY: number;
-  percentX: number;
-  percentY: number;
-};
-
-const emptyImageRect: RenderedImageRect = {
-  left: 0,
-  top: 0,
-  width: 0,
-  height: 0,
-};
-
-function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
+function distance(a: PointLike, b: PointLike) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-export function FrameCanvas({ imageSetId, frame }: Props) {
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-
+export function FrameCanvas({ frame }: Props) {
+  const selectedImageSetId = useAtomValue(selectedImageSetIdAtom);
   const [annotations, setAnnotations] = useAtom(annotationsAtom);
   const [toolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const [lineStartPointId, setLineStartPointId] = useAtom(activeLinePointStartAtom);
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
-  const [imageRect, setImageRect] = useState<RenderedImageRect>(emptyImageRect);
-  const [cursor, setCursor] = useState<CursorState>({
-    visible: false,
-    canvasX: 0,
-    canvasY: 0,
-    percentX: 0,
-    percentY: 0,
-  });
+  const [cursorPos, setCursorPos] = useState<PointLike | null>(null);
 
-  const observationKey = makeObservationKey(imageSetId, frame.id);
+  const observationKey = selectedImageSetId ? makeObservationKey(selectedImageSetId, frame.id) : frame.id;
 
   const visiblePoints = useMemo(() => {
     return Object.values(annotations.pointPositionsByPointId)
-      .map(byObservation => byObservation[observationKey])
+      .map(byImage => byImage[observationKey])
       .filter(Boolean) as PointPosition[];
   }, [annotations.pointPositionsByPointId, observationKey]);
 
   const visibleLines = useMemo(() => {
     return Object.values(annotations.lineOccurrencesByLineId)
-      .map(byObservation => byObservation[observationKey])
-      .filter(Boolean) as LineOccurrence[];
+      .map(byImage => byImage[observationKey])
+      .filter(Boolean);
   }, [annotations.lineOccurrencesByLineId, observationKey]);
 
-  const updateImageRect = useCallback(() => {
-    const canvas = canvasRef.current;
-    const image = imgRef.current;
-
-    if (!canvas) return;
-
-    const canvasBounds = canvas.getBoundingClientRect();
-    const naturalWidth = image?.naturalWidth || frame.width || canvasBounds.width;
-    const naturalHeight = image?.naturalHeight || frame.height || canvasBounds.height;
-
-    if (
-      canvasBounds.width <= 0 ||
-      canvasBounds.height <= 0 ||
-      naturalWidth <= 0 ||
-      naturalHeight <= 0
-    ) {
-      setImageRect(emptyImageRect);
-      return;
-    }
-
-    const canvasAspect = canvasBounds.width / canvasBounds.height;
-    const imageAspect = naturalWidth / naturalHeight;
-
-    let width = canvasBounds.width;
-    let height = canvasBounds.height;
-    let left = 0;
-    let top = 0;
-
-    if (canvasAspect > imageAspect) {
-      height = canvasBounds.height;
-      width = height * imageAspect;
-      left = (canvasBounds.width - width) / 2;
-    } else {
-      width = canvasBounds.width;
-      height = width / imageAspect;
-      top = (canvasBounds.height - height) / 2;
-    }
-
-    setImageRect({ left, top, width, height });
-  }, [frame.height, frame.width]);
-
-  useEffect(() => {
-    updateImageRect();
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const resizeObserver = new ResizeObserver(updateImageRect);
-    resizeObserver.observe(canvas);
-
-    return () => resizeObserver.disconnect();
-  }, [updateImageRect]);
-
-  function imageCoords(event: MouseEvent<HTMLDivElement>): PointerImageCoords {
-    const canvas = canvasRef.current;
-    const fallbackBounds = event.currentTarget.getBoundingClientRect();
-    const canvasBounds = canvas?.getBoundingClientRect() ?? fallbackBounds;
-
-    const canvasX = event.clientX - canvasBounds.left;
-    const canvasY = event.clientY - canvasBounds.top;
-
-    const imageX = canvasX - imageRect.left;
-    const imageY = canvasY - imageRect.top;
-    const hasImageRect = imageRect.width > 0 && imageRect.height > 0;
-
-    const insideImage =
-      hasImageRect &&
-      imageX >= 0 &&
-      imageX <= imageRect.width &&
-      imageY >= 0 &&
-      imageY <= imageRect.height;
-
+  function imageCoords(event: MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
     return {
-      x: hasImageRect ? clamp((imageX / imageRect.width) * 100, 0, 100) : 0,
-      y: hasImageRect ? clamp((imageY / imageRect.height) * 100, 0, 100) : 0,
-      canvasX,
-      canvasY,
-      insideImage,
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
     };
   }
 
-  function nearestPoint(pos: { x: number; y: number }) {
+  function nearestPoint(pos: PointLike) {
     let best: PointPosition | null = null;
     let bestDistance = Infinity;
-
     for (const point of visiblePoints) {
       const d = distance(pos, point);
       if (d < bestDistance) {
@@ -185,20 +54,18 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
         bestDistance = d;
       }
     }
-
-    return bestDistance < 1.5 ? best : null;
+    return bestDistance < 1.8 ? best : null;
   }
 
-  function createOrPlacePoint(pos: { x: number; y: number }) {
+  function createOrPlacePoint(pos: PointLike) {
+    if (!selectedImageSetId) return;
     const nextPointId = activePointId ?? `point-${Object.keys(annotations.pointsById).length + 1}`;
-
     setAnnotations(current => {
       const existingPoint = current.pointsById[nextPointId];
       const nextPoint = existingPoint ?? {
         id: nextPointId,
         color: makePointColor(Object.keys(current.pointsById).length),
       };
-
       const updated = {
         ...current,
         pointsById: {
@@ -206,16 +73,14 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
           [nextPointId]: nextPoint,
         },
       };
-
       return upsertPointPosition(updated, {
         pointId: nextPointId,
-        imageSetId,
+        imageSetId: selectedImageSetId,
         imageId: frame.id,
         x: pos.x,
         y: pos.y,
       });
     });
-
     setActivePointId(nextPointId);
   }
 
@@ -223,23 +88,16 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
     setAnnotations(current => {
       const positions = { ...(current.pointPositionsByPointId[pointId] ?? {}) };
       delete positions[observationKey];
-
       const lineOccurrencesByLineId = Object.fromEntries(
-        Object.entries(current.lineOccurrencesByLineId).map(([lineId, byObservation]) => {
-          const nextByObservation = { ...byObservation };
-          const occurrence = nextByObservation[observationKey];
-
-          if (
-            occurrence &&
-            (occurrence.startPointId === pointId || occurrence.endPointId === pointId)
-          ) {
-            delete nextByObservation[observationKey];
+        Object.entries(current.lineOccurrencesByLineId).map(([lineId, byImage]) => {
+          const nextByImage = { ...byImage };
+          const occurrence = nextByImage[observationKey];
+          if (occurrence && (occurrence.startPointId === pointId || occurrence.endPointId === pointId)) {
+            delete nextByImage[observationKey];
           }
-
-          return [lineId, nextByObservation];
+          return [lineId, nextByImage];
         }),
       );
-
       return {
         ...current,
         pointPositionsByPointId: {
@@ -251,11 +109,12 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
     });
   }
 
-  function movePoint(pointId: string, pos: { x: number; y: number }) {
+  function movePoint(pointId: string, pos: PointLike) {
+    if (!selectedImageSetId) return;
     setAnnotations(current =>
       upsertPointPosition(current, {
         pointId,
-        imageSetId,
+        imageSetId: selectedImageSetId,
         imageId: frame.id,
         x: pos.x,
         y: pos.y,
@@ -264,19 +123,17 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
   }
 
   function joinPoint(pointId: string) {
+    if (!selectedImageSetId) return;
     if (!lineStartPointId) {
       setLineStartPointId(pointId);
       return;
     }
-
     if (lineStartPointId === pointId) {
       setLineStartPointId(null);
       return;
     }
-
     setAnnotations(current => {
       const lineId = `line-${Object.keys(current.linesById).length + 1}`;
-
       return {
         ...current,
         linesById: {
@@ -288,7 +145,7 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
           [lineId]: {
             [observationKey]: {
               lineId,
-              imageSetId,
+              imageSetId: selectedImageSetId,
               imageId: frame.id,
               startPointId: lineStartPointId,
               endPointId: pointId,
@@ -297,218 +154,71 @@ export function FrameCanvas({ imageSetId, frame }: Props) {
         },
       };
     });
-
     setLineStartPointId(null);
   }
 
   function onCanvasMouseDown(event: MouseEvent<HTMLDivElement>) {
     const pos = imageCoords(event);
-
-    if (!pos.insideImage) return;
-
     const hitPoint = nearestPoint(pos);
-
     if (hitPoint) {
       setActivePointId(hitPoint.pointId);
-
       if (toolMode === "delete-point") {
         deletePoint(hitPoint.pointId);
         return;
       }
-
       if (toolMode === "move-point") {
         setDraggingPointId(hitPoint.pointId);
         return;
       }
-
       if (toolMode === "join-points") {
         joinPoint(hitPoint.pointId);
         return;
       }
     }
-
-    if (toolMode === "new-point") {
-      createOrPlacePoint(pos);
-    }
+    if (toolMode === "new-point") createOrPlacePoint(pos);
   }
 
   function onCanvasMouseMove(event: MouseEvent<HTMLDivElement>) {
     const pos = imageCoords(event);
-
-    setCursor({
-      visible: pos.insideImage,
-      canvasX: pos.canvasX,
-      canvasY: pos.canvasY,
-      percentX: pos.x,
-      percentY: pos.y,
-    });
-
-    if (!draggingPointId || !pos.insideImage) return;
-    movePoint(draggingPointId, pos);
-  }
-
-  function onCanvasMouseUp() {
-    setDraggingPointId(null);
-  }
-
-  function onCanvasMouseLeave() {
-    setDraggingPointId(null);
-    setCursor(current => ({ ...current, visible: false }));
-  }
-
-  const zoomBoxSize = 148;
-  const zoomScale = 3.6;
-  const zoomBackgroundWidth = imageRect.width * zoomScale;
-  const zoomBackgroundHeight = imageRect.height * zoomScale;
-  const zoomBackgroundX = -((cursor.percentX / 100) * zoomBackgroundWidth - zoomBoxSize / 2);
-  const zoomBackgroundY = -((cursor.percentY / 100) * zoomBackgroundHeight - zoomBoxSize / 2);
-  const zoomLeft = clamp(
-    cursor.canvasX + 18,
-    12,
-    Math.max(12, imageRect.left + imageRect.width - zoomBoxSize - 12),
-  );
-  const zoomTop = clamp(
-    cursor.canvasY + 18,
-    12,
-    Math.max(12, imageRect.top + imageRect.height - zoomBoxSize - 12),
-  );
-
-  const zoomPointMarkers = cursor.visible
-    ? visiblePoints
-        .map(point => {
-          const left = zoomBoxSize / 2 + ((point.x - cursor.percentX) / 100) * zoomBackgroundWidth;
-          const top = zoomBoxSize / 2 + ((point.y - cursor.percentY) / 100) * zoomBackgroundHeight;
-          return {
-            point,
-            left,
-            top,
-            color: annotations.pointsById[point.pointId]?.color ?? "white",
-          };
-        })
-        .filter(marker =>
-          marker.left >= -12 &&
-          marker.left <= zoomBoxSize + 12 &&
-          marker.top >= -12 &&
-          marker.top <= zoomBoxSize + 12,
-        )
-    : [];
-
-  function pointToRenderedImagePixels(point: { x: number; y: number }) {
-    return {
-      x: (point.x / 100) * imageRect.width,
-      y: (point.y / 100) * imageRect.height,
-    };
+    setCursorPos(pos);
+    if (draggingPointId) movePoint(draggingPointId, pos);
   }
 
   return (
     <div
-      ref={canvasRef}
       className="frame-canvas"
       onMouseDown={onCanvasMouseDown}
       onMouseMove={onCanvasMouseMove}
-      onMouseUp={onCanvasMouseUp}
-      onMouseLeave={onCanvasMouseLeave}
+      onMouseLeave={() => setCursorPos(null)}
+      onMouseUp={() => setDraggingPointId(null)}
     >
-      <img
-        ref={imgRef}
-        src={frame.url}
-        alt={frame.label}
-        draggable={false}
-        onLoad={updateImageRect}
-      />
-
-      <svg
-        className="annotation-layer"
-        viewBox={`0 0 ${Math.max(1, imageRect.width)} ${Math.max(1, imageRect.height)}`}
-        preserveAspectRatio="none"
-        style={{
-          left: imageRect.left,
-          top: imageRect.top,
-          width: imageRect.width,
-          height: imageRect.height,
-        }}
-      >
+      <img src={frame.url} alt={frame.label} draggable={false} />
+      <svg className="annotation-layer" viewBox="0 0 100 100" preserveAspectRatio="none">
         {visibleLines.map(line => {
           const start = annotations.pointPositionsByPointId[line.startPointId]?.[observationKey];
           const end = annotations.pointPositionsByPointId[line.endPointId]?.[observationKey];
-
           if (!start || !end) return null;
-
-          const startPx = pointToRenderedImagePixels(start);
-          const endPx = pointToRenderedImagePixels(end);
-
-          return (
-            <line
-              key={line.lineId}
-              x1={startPx.x}
-              y1={startPx.y}
-              x2={endPx.x}
-              y2={endPx.y}
-              className="annotation-line"
-            />
-          );
-        })}
-
-        {visiblePoints.map(point => {
-          const definition = annotations.pointsById[point.pointId];
-          const pointPx = pointToRenderedImagePixels(point);
-
-          return (
-            <g key={point.pointId}>
-              <circle
-                cx={pointPx.x}
-                cy={pointPx.y}
-                r="3"
-                fill={definition?.color ?? "white"}
-                stroke={activePointId === point.pointId ? "white" : "black"}
-                strokeWidth="1.0"
-              />
-              <text
-                x={pointPx.x + 9}
-                y={pointPx.y - 9}
-                className="point-label"
-              >
-                {point.pointId}
-              </text>
-            </g>
-          );
+          return <line key={line.lineId} x1={start.x} y1={start.y} x2={end.x} y2={end.y} className="annotation-line" />;
         })}
       </svg>
-
-      {cursor.visible ? (
-        <div
-          className="zoom-box"
-          style={{
-            left: zoomLeft,
-            top: zoomTop,
-            backgroundImage: `url(${frame.url})`,
-            backgroundSize: `${zoomBackgroundWidth}px ${zoomBackgroundHeight}px`,
-            backgroundPosition: `${zoomBackgroundX}px ${zoomBackgroundY}px`,
-          }}
-        >
-          {zoomPointMarkers.map(marker => (
-            <span
-              key={marker.point.pointId}
-              className={
-                marker.point.pointId === activePointId
-                  ? "zoom-point-marker active"
-                  : "zoom-point-marker"
-              }
-              style={{
-                left: marker.left,
-                top: marker.top,
-                background: marker.color,
-              }}
-              title={marker.point.pointId}
-            />
-          ))}
-          <span className="zoom-crosshair horizontal" />
-          <span className="zoom-crosshair vertical" />
-          <span className="zoom-coordinates">
-            {cursor.percentX.toFixed(1)}, {cursor.percentY.toFixed(1)}
-          </span>
+      {visiblePoints.map(point => {
+        const definition = annotations.pointsById[point.pointId];
+        return (
+          <button
+            key={point.pointId}
+            className={`point-marker ${point.pointId === activePointId ? "active" : ""}`}
+            style={{ left: `${point.x}%`, top: `${point.y}%`, background: definition?.color ?? "#ff4971" }}
+            type="button"
+            title={point.pointId}
+          />
+        );
+      })}
+      {cursorPos && (
+        <div className="zoom-box" style={{ left: `${Math.min(cursorPos.x + 2, 72)}%`, top: `${Math.min(cursorPos.y + 2, 72)}%` }}>
+          <div className="zoom-image" style={{ backgroundImage: `url(${frame.url})`, backgroundPosition: `${cursorPos.x}% ${cursorPos.y}%` }} />
+          <span className="zoom-crosshair" />
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

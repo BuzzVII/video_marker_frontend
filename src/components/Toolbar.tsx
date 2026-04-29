@@ -1,90 +1,65 @@
+import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
-import { saveAnnotations } from "../api/client";
-import {
-  activePointAtom,
-  activePointIdAtom,
-  annotationsAtom,
-  selectedProjectIdAtom,
-  toolModeAtom,
-} from "../state/annotationAtoms";
-import type { ToolMode } from "../types/annotations";
-
-const tools: Array<{ id: ToolMode; label: string }> = [
-  { id: "new-point", label: "New point" },
-  { id: "move-point", label: "Move point" },
-  { id: "delete-point", label: "Delete point" },
-  { id: "join-points", label: "Join points" },
-];
+import { saveAnnotations, uploadVideoToProject } from "../api/client";
+import { activePointIdAtom, annotationsAtom, selectedProjectIdAtom, toolModeAtom } from "../state/annotationAtoms";
 
 export function Toolbar() {
   const queryClient = useQueryClient();
-
+  const selectedProjectId = useAtomValue(selectedProjectIdAtom);
+  const [annotations] = useAtom(annotationsAtom);
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
-  const annotations = useAtomValue(annotationsAtom);
-  const selectedProjectId = useAtomValue(selectedProjectIdAtom);
-  const activePoint = useAtomValue(activePointAtom);
 
-  const pointOptions = Object.values(annotations.pointsById).sort((a, b) =>
-    a.id.localeCompare(b.id, undefined, { numeric: true }),
-  );
+  const pointIds = useMemo(() => Object.keys(annotations.pointsById), [annotations.pointsById]);
 
   const saveMutation = useMutation({
     mutationFn: () => saveAnnotations(selectedProjectId!, annotations),
-    onSuccess: saved => {
-      queryClient.setQueryData(["annotations", selectedProjectId], saved);
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["annotations", selectedProjectId] }),
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadVideoToProject(selectedProjectId!, file),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projectImageSets", selectedProjectId] }),
   });
 
   return (
     <div className="toolbar">
-      {tools.map(tool => (
-        <button
-          key={tool.id}
-          className={toolMode === tool.id ? "tool active" : "tool"}
-          type="button"
-          onClick={() => setToolMode(tool.id)}
-        >
-          {tool.label}
-        </button>
-      ))}
+      <div className="toolbar-group">
+        <button data-active={toolMode === "new-point"} onClick={() => setToolMode("new-point")}>New point</button>
+        <button data-active={toolMode === "move-point"} onClick={() => setToolMode("move-point")}>Move point</button>
+        <button data-active={toolMode === "delete-point"} onClick={() => setToolMode("delete-point")}>Delete point</button>
+        <button data-active={toolMode === "join-points"} onClick={() => setToolMode("join-points")}>Join points</button>
+      </div>
 
-      <button
-        className="tool save"
-        type="button"
-        disabled={!selectedProjectId || saveMutation.isPending}
-        onClick={() => saveMutation.mutate()}
-      >
-        {saveMutation.isPending ? "Saving..." : "Save points"}
-      </button>
-
-      <label className="active-point-picker">
-        <span>active point</span>
-        <select
-          value={activePointId ?? ""}
-          onChange={event => setActivePointId(event.target.value || null)}
-        >
-          <option value="">New point</option>
-          {pointOptions.map(point => (
-            <option key={point.id} value={point.id}>
-              {point.id}
-            </option>
+      <label className="toolbar-field">
+        Active point
+        <select value={activePointId ?? ""} onChange={event => setActivePointId(event.target.value || null)}>
+          <option value="">Next new point</option>
+          {pointIds.map(pointId => (
+            <option key={pointId} value={pointId}>{pointId}</option>
           ))}
         </select>
       </label>
 
-      <div className="active-point">
-        <span
-          className="active-point-swatch"
-          style={{ background: activePoint?.color ?? "transparent" }}
+      <label className="upload-button">
+        Upload video
+        <input
+          type="file"
+          accept="video/*"
+          hidden
+          disabled={!selectedProjectId}
+          onChange={event => {
+            const file = event.target.files?.[0];
+            if (file) uploadMutation.mutate(file);
+            event.currentTarget.value = "";
+          }}
         />
-        <span>{activePoint?.id ?? "new"}</span>
-      </div>
+      </label>
 
-      {saveMutation.error ? (
-        <div className="inline-error">Save failed: {saveMutation.error.message}</div>
-      ) : null}
+      <button disabled={!selectedProjectId || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+        Save annotations
+      </button>
     </div>
   );
 }
