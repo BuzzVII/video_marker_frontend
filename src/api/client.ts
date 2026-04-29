@@ -1,4 +1,5 @@
 import { API_ENDPOINTS, apiUrl } from "./endpoints.js";
+
 import type { AnnotationState, ImageSet, ImageSetSummary, ProjectSummary } from "../types/annotations";
 import type { EdgeLengthConstraint, ReconstructionModel } from "../types/reconstruction";
 import { normalizeReconstructionModel } from "../utils/reconstructionModel";
@@ -24,6 +25,25 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function modelDataJson(model: ReconstructionModel) {
+  return {
+    cuboidsById: model.cuboidsById ?? {},
+    pointVertexConstraintsById: model.pointVertexConstraintsById ?? {},
+    imageLineEdgeConstraintsById: model.imageLineEdgeConstraintsById ?? {},
+    edgeLengthConstraintsById: model.edgeLengthConstraintsById ?? {},
+    activeCuboidId: model.activeCuboidId ?? null,
+    activeVertex: model.activeVertex ?? null,
+    activeEdge: model.activeEdge ?? null,
+  };
+}
+
+function modelWritePayload(model: ReconstructionModel) {
+  return {
+    data_json: modelDataJson(model),
+    source: "manual",
+  };
 }
 
 export async function fetchHealth(): Promise<{ ok: boolean }> {
@@ -94,20 +114,32 @@ export async function fetchLatestModel(projectId: string): Promise<Reconstructio
 }
 
 export async function createModel(projectId: string, model: ReconstructionModel): Promise<ReconstructionModel> {
-  return requestJson(API_ENDPOINTS.models(projectId), {
+  const raw = await requestJson<unknown>(API_ENDPOINTS.models(projectId), {
     method: "POST",
-    body: JSON.stringify(model),
+    body: JSON.stringify(modelWritePayload(model)),
   });
+
+  const normalized = normalizeReconstructionModel(raw, projectId);
+  if (!normalized) throw new Error("Backend returned an empty reconstruction model after create.");
+  return normalized;
 }
 
 export async function saveModel(projectId: string, model: ReconstructionModel): Promise<ReconstructionModel> {
-  return requestJson(API_ENDPOINTS.model(projectId, model.id), {
+  const raw = await requestJson<unknown>(API_ENDPOINTS.model(projectId, model.id), {
     method: "PUT",
-    body: JSON.stringify(model),
+    body: JSON.stringify(modelWritePayload(model)),
   });
+
+  const normalized = normalizeReconstructionModel(raw, projectId);
+  if (!normalized) throw new Error("Backend returned an empty reconstruction model after save.");
+  return normalized;
 }
 
-export async function createEdgeLengthConstraint(projectId: string, modelId: string, constraint: EdgeLengthConstraint): Promise<EdgeLengthConstraint> {
+export async function createEdgeLengthConstraint(
+  projectId: string,
+  modelId: string,
+  constraint: EdgeLengthConstraint,
+): Promise<EdgeLengthConstraint> {
   return requestJson(API_ENDPOINTS.edgeLengthConstraints(projectId, modelId), {
     method: "POST",
     body: JSON.stringify(constraint),

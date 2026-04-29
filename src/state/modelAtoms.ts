@@ -1,14 +1,17 @@
 import { atom } from "jotai";
+
 import type { Cuboid, CuboidEdgeRef, CuboidVertexRef, ModelToolMode, ReconstructionModel } from "../types/reconstruction";
 
 export function makeEmptyModel(projectId: string): ReconstructionModel {
   const now = new Date().toISOString();
+
   return {
     id: `model-${crypto.randomUUID()}`,
     projectId,
     version: 1,
     cuboidsById: {},
     pointVertexConstraintsById: {},
+    imageLineEdgeConstraintsById: {},
     edgeLengthConstraintsById: {},
     activeCuboidId: null,
     activeVertex: null,

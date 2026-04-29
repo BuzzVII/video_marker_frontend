@@ -1,7 +1,16 @@
 import { ThreeEvent } from "@react-three/fiber";
 import { useAtom } from "jotai";
 import { Vector3 } from "three";
-import { isEdgeLengthModalOpenAtom, modelToolModeAtom, newestModelAtom, selectedCuboidIdAtom, selectedEdgeAtom, selectedVertexAtom } from "../state/modelAtoms";
+
+import { annotationsAtom } from "../state/annotationAtoms";
+import {
+  isEdgeLengthModalOpenAtom,
+  modelToolModeAtom,
+  newestModelAtom,
+  selectedCuboidIdAtom,
+  selectedEdgeAtom,
+  selectedVertexAtom,
+} from "../state/modelAtoms";
 import type { Cuboid, CuboidEdgeRef, CuboidVertexRef } from "../types/reconstruction";
 import { cuboidEdges, localCuboidVertices } from "../types/reconstruction";
 
@@ -11,6 +20,7 @@ type Props = {
 
 function vertexPosition(cuboid: Cuboid, vertexIndex: number): Vector3 {
   const local = localCuboidVertices[vertexIndex];
+
   return new Vector3(
     cuboid.center[0] + local[0] * cuboid.size[0],
     cuboid.center[1] + local[1] * cuboid.size[1],
@@ -28,6 +38,7 @@ function edgeScale(cuboid: Cuboid, edgeIndex: number): [number, number, number] 
   const start = vertexPosition(cuboid, a);
   const end = vertexPosition(cuboid, b);
   const length = start.distanceTo(end);
+
   return [0.035, 0.035, length];
 }
 
@@ -36,13 +47,24 @@ function edgeRotation(cuboid: Cuboid, edgeIndex: number): [number, number, numbe
   const start = vertexPosition(cuboid, a);
   const end = vertexPosition(cuboid, b);
   const delta = end.sub(start).normalize();
+
   if (Math.abs(delta.x) > 0.9) return [0, Math.PI / 2, 0];
   if (Math.abs(delta.y) > 0.9) return [Math.PI / 2, 0, 0];
+
   return [0, 0, 0];
+}
+
+function sameVertex(a: CuboidVertexRef, cuboidId: string, vertexIndex: number): boolean {
+  return a.cuboidId === cuboidId && a.vertexIndex === vertexIndex;
+}
+
+function sameEdge(a: CuboidEdgeRef, cuboidId: string, edgeIndex: number): boolean {
+  return a.cuboidId === cuboidId && a.edgeIndex === edgeIndex;
 }
 
 export function CuboidMesh({ cuboid }: Props) {
   const [model, setModel] = useAtom(newestModelAtom);
+  const [annotations] = useAtom(annotationsAtom);
   const [mode] = useAtom(modelToolModeAtom);
   const [selectedCuboidId, setSelectedCuboidId] = useAtom(selectedCuboidIdAtom);
   const [selectedVertex, setSelectedVertex] = useAtom(selectedVertexAtom);
@@ -55,33 +77,65 @@ export function CuboidMesh({ cuboid }: Props) {
     event.stopPropagation();
   }
 
+  function pointColorForVertex(vertexIndex: number): string | null {
+    if (!model) return null;
+
+    const constraint = Object.values(model.pointVertexConstraintsById ?? {}).find(item =>
+      item?.vertex && sameVertex(item.vertex, cuboid.id, vertexIndex),
+    );
+
+    if (!constraint) return null;
+
+    return annotations.pointsById[constraint.pointId]?.color ?? null;
+  }
+
+  function lineColorForEdge(edgeIndex: number): string | null {
+    if (!model) return null;
+
+    const constraint = Object.values(model.imageLineEdgeConstraintsById ?? {}).find(item =>
+      item?.edge && sameEdge(item.edge, cuboid.id, edgeIndex),
+    );
+
+    if (!constraint) return null;
+
+    return annotations.linesById[constraint.lineId]?.color ?? null;
+  }
+
   function onCuboidClick(event: ThreeEvent<MouseEvent>) {
     stop(event);
+
     if (!model) return;
+
     if (mode === "delete-cuboid") {
       const nextCuboids = { ...(model.cuboidsById ?? {}) };
       delete nextCuboids[cuboid.id];
+
       setModel({
         ...model,
         cuboidsById: nextCuboids,
         activeCuboidId: model.activeCuboidId === cuboid.id ? null : model.activeCuboidId,
         updatedAt: new Date().toISOString(),
       });
+
       setSelectedCuboidId(null);
       setSelectedVertex(null);
       setSelectedEdge(null);
       return;
     }
+
     setSelectedCuboidId(cuboid.id);
   }
 
   function onVertexClick(vertexIndex: number, event: ThreeEvent<MouseEvent>) {
     stop(event);
+
     const ref: CuboidVertexRef = { cuboidId: cuboid.id, vertexIndex };
+
     if (mode === "delete-point") {
       if (selectedVertex?.cuboidId === cuboid.id && selectedVertex.vertexIndex === vertexIndex) setSelectedVertex(null);
       return;
     }
+
     if (mode === "select-vertex") {
       setSelectedCuboidId(cuboid.id);
       setSelectedVertex(ref);
@@ -91,16 +145,20 @@ export function CuboidMesh({ cuboid }: Props) {
 
   function onEdgeClick(edgeIndex: number, event: ThreeEvent<MouseEvent>) {
     stop(event);
+
     const [startVertexIndex, endVertexIndex] = cuboidEdges[edgeIndex];
+
     const ref: CuboidEdgeRef = {
       cuboidId: cuboid.id,
       edgeIndex,
       startVertexIndex,
       endVertexIndex,
     };
+
     setSelectedCuboidId(cuboid.id);
     setSelectedEdge(ref);
     setSelectedVertex(null);
+
     if (mode === "add-edge-length") setEdgeLengthModalOpen(true);
   }
 
@@ -114,10 +172,14 @@ export function CuboidMesh({ cuboid }: Props) {
       {localCuboidVertices.map((_, index) => {
         const pos = vertexPosition(cuboid, index);
         const active = selectedVertex?.cuboidId === cuboid.id && selectedVertex.vertexIndex === index;
+        const linkedPointColor = pointColorForVertex(index);
+        const color = active ? "#ffcf5a" : linkedPointColor ?? "#ffffff";
+        const radius = active ? 0.075 : linkedPointColor ? 0.065 : 0.055;
+
         return (
           <mesh key={index} position={pos} onClick={event => onVertexClick(index, event)}>
-            <sphereGeometry args={[active ? 0.075 : 0.055, 16, 16]} />
-            <meshStandardMaterial color={active ? "#ffcf5a" : "#ffffff"} />
+            <sphereGeometry args={[radius, 16, 16]} />
+            <meshStandardMaterial color={color} />
           </mesh>
         );
       })}
@@ -125,10 +187,22 @@ export function CuboidMesh({ cuboid }: Props) {
       {cuboidEdges.map((_, index) => {
         const pos = edgeCenter(cuboid, index);
         const active = selectedEdge?.cuboidId === cuboid.id && selectedEdge.edgeIndex === index;
+        const linkedLineColor = lineColorForEdge(index);
+        const color = active ? "#ffcf5a" : linkedLineColor ?? "#253144";
+        const opacity = active || linkedLineColor ? 1 : 0.72;
+        const scale = edgeScale(cuboid, index);
+        const highlightedScale: [number, number, number] = linkedLineColor || active ? [scale[0] * 1.35, scale[1] * 1.35, scale[2]] : scale;
+
         return (
-          <mesh key={index} position={pos} rotation={edgeRotation(cuboid, index)} scale={edgeScale(cuboid, index)} onClick={event => onEdgeClick(index, event)}>
+          <mesh
+            key={index}
+            position={pos}
+            rotation={edgeRotation(cuboid, index)}
+            scale={highlightedScale}
+            onClick={event => onEdgeClick(index, event)}
+          >
             <cylinderGeometry args={[1, 1, 1, 8]} />
-            <meshStandardMaterial color={active ? "#ffcf5a" : "#253144"} transparent opacity={active ? 1 : 0.72} />
+            <meshStandardMaterial color={color} transparent opacity={opacity} />
           </mesh>
         );
       })}

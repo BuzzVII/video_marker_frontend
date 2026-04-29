@@ -6,6 +6,7 @@ export type ModelToolMode =
   | "delete-point"
   | "add-cuboid"
   | "delete-cuboid"
+  | "select-edge"
   | "add-edge-length";
 
 export type Cuboid = {
@@ -42,6 +43,14 @@ export type PointVertexConstraint = {
   source: "manual" | "solver";
 };
 
+export type ImageLineEdgeConstraint = {
+  id: string;
+  lineId: string;
+  edge: CuboidEdgeRef;
+  confidence?: number;
+  source: "manual" | "solver";
+};
+
 export type EdgeLengthConstraint = {
   id: string;
   edge: CuboidEdgeRef;
@@ -57,6 +66,7 @@ export type ReconstructionModel = {
   version: number;
   cuboidsById: Record<string, Cuboid>;
   pointVertexConstraintsById: Record<string, PointVertexConstraint>;
+  imageLineEdgeConstraintsById: Record<string, ImageLineEdgeConstraint>;
   edgeLengthConstraintsById: Record<string, EdgeLengthConstraint>;
   activeCuboidId: string | null;
   activeVertex: CuboidVertexRef | null;

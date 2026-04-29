@@ -1,4 +1,4 @@
-export type ToolMode = "new-point" | "move-point" | "delete-point" | "join-points";
+export type ToolMode = "new-point" | "move-point" | "delete-point" | "join-points" | "new-line" | "move-line" | "delete-line";
 
 export type ProjectSummary = {
   id: string;
@@ -48,8 +48,14 @@ export type PointPosition = {
   y: number;
 };
 
+export type ImagePoint = {
+  x: number;
+  y: number;
+};
+
 export type LineDefinition = {
   id: string;
+  color: string;
   label?: string;
 };
 
@@ -57,8 +63,10 @@ export type LineOccurrence = {
   lineId: string;
   imageSetId: string;
   imageId: string;
-  startPointId: string;
-  endPointId: string;
+  start: ImagePoint;
+  end: ImagePoint;
+  startPointId?: string;
+  endPointId?: string;
 };
 
 export type AnnotationState = {

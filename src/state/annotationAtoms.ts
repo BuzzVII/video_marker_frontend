@@ -1,5 +1,6 @@
 import { atom } from "jotai";
-import type { AnnotationState, ImageSet, PointPosition, ToolMode } from "../types/annotations";
+
+import type { AnnotationState, ImageSet, LineOccurrence, PointPosition, ToolMode } from "../types/annotations";
 
 export const emptyAnnotations: AnnotationState = {
   pointsById: {},
@@ -15,6 +16,7 @@ export const selectedFrameIdAtom = atom<string | null>(null);
 export const annotationsAtom = atom<AnnotationState>(structuredClone(emptyAnnotations));
 export const toolModeAtom = atom<ToolMode>("new-point");
 export const activePointIdAtom = atom<string | null>(null);
+export const activeLineIdAtom = atom<string | null>(null);
 export const activeLinePointStartAtom = atom<string | null>(null);
 
 export const activePointAtom = atom(get => {
@@ -24,9 +26,21 @@ export const activePointAtom = atom(get => {
   return annotations.pointsById[activePointId] ?? null;
 });
 
+export const activeLineAtom = atom(get => {
+  const annotations = get(annotationsAtom);
+  const activeLineId = get(activeLineIdAtom);
+  if (!activeLineId) return null;
+  return annotations.linesById[activeLineId] ?? null;
+});
+
 export function makePointColor(index: number): string {
   const hue = (index * 137.508) % 360;
   return `hsl(${hue}, 85%, 55%)`;
+}
+
+export function makeLineColor(index: number): string {
+  const hue = (index * 137.508 + 68) % 360;
+  return `hsl(${hue}, 90%, 48%)`;
 }
 
 export function makeObservationKey(imageSetId: string, imageId: string): string {
@@ -35,6 +49,7 @@ export function makeObservationKey(imageSetId: string, imageId: string): string 
 
 export function upsertPointPosition(state: AnnotationState, position: PointPosition): AnnotationState {
   const observationKey = makeObservationKey(position.imageSetId, position.imageId);
+
   return {
     ...state,
     pointPositionsByPointId: {
@@ -42,6 +57,21 @@ export function upsertPointPosition(state: AnnotationState, position: PointPosit
       [position.pointId]: {
         ...(state.pointPositionsByPointId[position.pointId] ?? {}),
         [observationKey]: position,
+      },
+    },
+  };
+}
+
+export function upsertLineOccurrence(state: AnnotationState, occurrence: LineOccurrence): AnnotationState {
+  const observationKey = makeObservationKey(occurrence.imageSetId, occurrence.imageId);
+
+  return {
+    ...state,
+    lineOccurrencesByLineId: {
+      ...state.lineOccurrencesByLineId,
+      [occurrence.lineId]: {
+        ...(state.lineOccurrencesByLineId[occurrence.lineId] ?? {}),
+        [observationKey]: occurrence,
       },
     },
   };

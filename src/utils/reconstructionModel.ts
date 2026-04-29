@@ -1,5 +1,13 @@
 import { makeEmptyModel } from "../state/modelAtoms";
-import type { Cuboid, EdgeLengthConstraint, PointVertexConstraint, ReconstructionModel } from "../types/reconstruction";
+import type {
+  Cuboid,
+  CuboidEdgeRef,
+  CuboidVertexRef,
+  EdgeLengthConstraint,
+  ImageLineEdgeConstraint,
+  PointVertexConstraint,
+  ReconstructionModel,
+} from "../types/reconstruction";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -17,9 +25,10 @@ export function normalizeReconstructionModel(raw: unknown, projectId: string): R
   const fallback = makeEmptyModel(projectId);
   if (!isRecord(raw)) return fallback;
 
-  const payload = isRecord(raw.data_json)
+  const dataJson = raw.data_json;
+  const payload = isRecord(dataJson)
     ? {
-        ...raw.data_json,
+        ...dataJson,
         id: raw.id,
         projectId: raw.project_id ?? raw.projectId,
         version: raw.version,
@@ -35,10 +44,11 @@ export function normalizeReconstructionModel(raw: unknown, projectId: string): R
     version: typeof payload.version === "number" ? payload.version : fallback.version,
     cuboidsById: recordOrEmpty<Cuboid>(payload.cuboidsById),
     pointVertexConstraintsById: recordOrEmpty<PointVertexConstraint>(payload.pointVertexConstraintsById),
+    imageLineEdgeConstraintsById: recordOrEmpty<ImageLineEdgeConstraint>(payload.imageLineEdgeConstraintsById),
     edgeLengthConstraintsById: recordOrEmpty<EdgeLengthConstraint>(payload.edgeLengthConstraintsById),
     activeCuboidId: valueOrNull<string>(payload.activeCuboidId),
-    activeVertex: valueOrNull(payload.activeVertex),
-    activeEdge: valueOrNull(payload.activeEdge),
+    activeVertex: valueOrNull<CuboidVertexRef>(payload.activeVertex),
+    activeEdge: valueOrNull<CuboidEdgeRef>(payload.activeEdge),
     createdAt: typeof payload.createdAt === "string" ? payload.createdAt : fallback.createdAt,
     updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : fallback.updatedAt,
   };
