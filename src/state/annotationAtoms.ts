@@ -78,7 +78,6 @@ export function upsertLineOccurrence(state: AnnotationState, occurrence: LineOcc
   };
 }
 
-
 export function frameHasMarkup(state: AnnotationState, imageSetId: string, imageId: string): boolean {
   const observationKey = makeObservationKey(imageSetId, imageId);
 

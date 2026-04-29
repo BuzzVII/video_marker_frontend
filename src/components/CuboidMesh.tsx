@@ -107,7 +107,8 @@ export function CuboidMesh({ cuboid }: Props) {
 
     if (!constraint) return null;
 
-    return annotations.linesById[constraint.lineId]?.color ?? fallbackColorFromId(constraint.lineId, 68);
+    const firstOccurrence = Object.values(annotations.lineOccurrencesByLineId[constraint.lineId] ?? {})[0];
+    return annotations.linesById[constraint.lineId]?.color ?? firstOccurrence?.color ?? fallbackColorFromId(constraint.lineId, 68);
   }
 
   function onCuboidClick(event: ThreeEvent<MouseEvent>) {

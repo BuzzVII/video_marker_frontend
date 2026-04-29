@@ -30,6 +30,15 @@ type DragState =
   | { kind: "line"; lineId: string; last: ImagePoint }
   | null;
 
+function colorFromId(id: string, hueOffset = 0): string {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+  }
+
+  return `hsl(${(hash + hueOffset) % 360}, 85%, 55%)`;
+}
+
 function distance(a: PointLike, b: PointLike) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -83,6 +92,10 @@ export function FrameCanvas({ frame }: Props) {
       .map(byImage => byImage[observationKey])
       .filter(Boolean) as LineOccurrence[];
   }, [annotations.lineOccurrencesByLineId, observationKey]);
+
+  function lineColor(line: LineOccurrence): string {
+    return annotations.linesById[line.lineId]?.color ?? line.color ?? colorFromId(line.lineId, 68);
+  }
 
   function imageCoords(event: MouseEvent<HTMLElement>): ImagePoint {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -164,13 +177,15 @@ export function FrameCanvas({ frame }: Props) {
     const lineId = `line-${crypto.randomUUID()}`;
 
     setAnnotations(current => {
+      const color = makeLineColor(Object.keys(current.linesById).length);
+
       const updated = {
         ...current,
         linesById: {
           ...current.linesById,
           [lineId]: {
             id: lineId,
-            color: makeLineColor(Object.keys(current.linesById).length),
+            color,
           },
         },
       };
@@ -181,6 +196,7 @@ export function FrameCanvas({ frame }: Props) {
         imageId: frame.id,
         start,
         end,
+        color,
       });
     });
 
@@ -258,6 +274,7 @@ export function FrameCanvas({ frame }: Props) {
 
       return upsertLineOccurrence(current, {
         ...occurrence,
+        color: occurrence.color ?? annotations.linesById[lineId]?.color ?? colorFromId(lineId, 68),
         start: { x: occurrence.start.x + dx, y: occurrence.start.y + dy },
         end: { x: occurrence.end.x + dx, y: occurrence.end.y + dy },
       });
@@ -284,13 +301,15 @@ export function FrameCanvas({ frame }: Props) {
     const lineId = `line-${crypto.randomUUID()}`;
 
     setAnnotations(current => {
+      const color = makeLineColor(Object.keys(current.linesById).length);
+
       const updated = {
         ...current,
         linesById: {
           ...current.linesById,
           [lineId]: {
             id: lineId,
-            color: makeLineColor(Object.keys(current.linesById).length),
+            color,
           },
         },
       };
@@ -301,6 +320,7 @@ export function FrameCanvas({ frame }: Props) {
         imageId: frame.id,
         start: { x: start.x, y: start.y },
         end: { x: end.x, y: end.y },
+        color,
         startPointId: lineStartPointId,
         endPointId: pointId,
       });
@@ -408,7 +428,6 @@ export function FrameCanvas({ frame }: Props) {
           const endpoints = lineEndpoints(line, annotations.pointPositionsByPointId, observationKey);
           if (!endpoints) return null;
 
-          const definition = annotations.linesById[line.lineId];
           const active = activeLineId === line.lineId;
 
           return (
@@ -418,7 +437,7 @@ export function FrameCanvas({ frame }: Props) {
               y1={endpoints.start.y}
               x2={endpoints.end.x}
               y2={endpoints.end.y}
-              stroke={active ? "#ffcf5a" : definition?.color ?? "#23d18b"}
+              stroke={active ? "#ffcf5a" : lineColor(line)}
               strokeWidth={active ? 4 : 3}
               vectorEffect="non-scaling-stroke"
             />
