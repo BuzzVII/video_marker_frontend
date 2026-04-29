@@ -65,6 +65,7 @@ export type LineOccurrence = {
   imageId: string;
   start: ImagePoint;
   end: ImagePoint;
+  color?: string;
   startPointId?: string;
   endPointId?: string;
 };
