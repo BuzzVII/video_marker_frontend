@@ -18,6 +18,7 @@ export const toolModeAtom = atom<ToolMode>("new-point");
 export const activePointIdAtom = atom<string | null>(null);
 export const activeLineIdAtom = atom<string | null>(null);
 export const activeLinePointStartAtom = atom<string | null>(null);
+export const hideFramesWithoutMarkupAtom = atom(false);
 
 export const activePointAtom = atom(get => {
   const annotations = get(annotationsAtom);
@@ -75,4 +76,14 @@ export function upsertLineOccurrence(state: AnnotationState, occurrence: LineOcc
       },
     },
   };
+}
+
+
+export function frameHasMarkup(state: AnnotationState, imageSetId: string, imageId: string): boolean {
+  const observationKey = makeObservationKey(imageSetId, imageId);
+
+  const hasPoint = Object.values(state.pointPositionsByPointId).some(byImage => Boolean(byImage?.[observationKey]));
+  if (hasPoint) return true;
+
+  return Object.values(state.lineOccurrencesByLineId).some(byImage => Boolean(byImage?.[observationKey]));
 }

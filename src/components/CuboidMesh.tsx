@@ -62,6 +62,15 @@ function sameEdge(a: CuboidEdgeRef, cuboidId: string, edgeIndex: number): boolea
   return a.cuboidId === cuboidId && a.edgeIndex === edgeIndex;
 }
 
+function fallbackColorFromId(id: string, hueOffset = 0): string {
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+  }
+  const hue = (hash + hueOffset) % 360;
+  return `hsl(${hue}, 85%, 55%)`;
+}
+
 export function CuboidMesh({ cuboid }: Props) {
   const [model, setModel] = useAtom(newestModelAtom);
   const [annotations] = useAtom(annotationsAtom);
@@ -86,19 +95,19 @@ export function CuboidMesh({ cuboid }: Props) {
 
     if (!constraint) return null;
 
-    return annotations.pointsById[constraint.pointId]?.color ?? null;
+    return annotations.pointsById[constraint.pointId]?.color ?? fallbackColorFromId(constraint.pointId, 0);
   }
 
   function lineColorForEdge(edgeIndex: number): string | null {
     if (!model) return null;
 
-    const constraint = Object.values(model.imageLineEdgeConstraintsById ?? {}).find(item =>
-      item?.edge && sameEdge(item.edge, cuboid.id, edgeIndex),
-    );
+    const lineConstraints = model.imageLineEdgeConstraintsById ?? (model as { lineEdgeConstraintsById?: typeof model.imageLineEdgeConstraintsById }).lineEdgeConstraintsById ?? {};
+
+    const constraint = Object.values(lineConstraints).find(item => item?.edge && sameEdge(item.edge, cuboid.id, edgeIndex));
 
     if (!constraint) return null;
 
-    return annotations.linesById[constraint.lineId]?.color ?? null;
+    return annotations.linesById[constraint.lineId]?.color ?? fallbackColorFromId(constraint.lineId, 68);
   }
 
   function onCuboidClick(event: ThreeEvent<MouseEvent>) {

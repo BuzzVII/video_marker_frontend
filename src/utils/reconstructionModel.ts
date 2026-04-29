@@ -44,7 +44,7 @@ export function normalizeReconstructionModel(raw: unknown, projectId: string): R
     version: typeof payload.version === "number" ? payload.version : fallback.version,
     cuboidsById: recordOrEmpty<Cuboid>(payload.cuboidsById),
     pointVertexConstraintsById: recordOrEmpty<PointVertexConstraint>(payload.pointVertexConstraintsById),
-    imageLineEdgeConstraintsById: recordOrEmpty<ImageLineEdgeConstraint>(payload.imageLineEdgeConstraintsById),
+    imageLineEdgeConstraintsById: recordOrEmpty<ImageLineEdgeConstraint>(payload.imageLineEdgeConstraintsById ?? payload.lineEdgeConstraintsById),
     edgeLengthConstraintsById: recordOrEmpty<EdgeLengthConstraint>(payload.edgeLengthConstraintsById),
     activeCuboidId: valueOrNull<string>(payload.activeCuboidId),
     activeVertex: valueOrNull<CuboidVertexRef>(payload.activeVertex),

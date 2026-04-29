@@ -419,7 +419,7 @@ export function FrameCanvas({ frame }: Props) {
               x2={endpoints.end.x}
               y2={endpoints.end.y}
               stroke={active ? "#ffcf5a" : definition?.color ?? "#23d18b"}
-              strokeWidth={active ? 0.65 : 0.45}
+              strokeWidth={active ? 4 : 3}
               vectorEffect="non-scaling-stroke"
             />
           );
@@ -433,7 +433,7 @@ export function FrameCanvas({ frame }: Props) {
             y2={cursorPos.y}
             stroke="#ffcf5a"
             strokeDasharray="1.2 0.8"
-            strokeWidth={0.45}
+            strokeWidth={3}
             vectorEffect="non-scaling-stroke"
           />
         )}

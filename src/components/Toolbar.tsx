@@ -4,7 +4,32 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
 
 import { saveAnnotations, uploadVideoToProject } from "../api/client";
-import { activeLineIdAtom, activePointIdAtom, annotationsAtom, selectedProjectIdAtom, toolModeAtom } from "../state/annotationAtoms";
+import {
+  activeLineIdAtom,
+  activePointIdAtom,
+  annotationsAtom,
+  hideFramesWithoutMarkupAtom,
+  selectedProjectIdAtom,
+  toolModeAtom,
+} from "../state/annotationAtoms";
+
+function ColorSwatch({ color }: { color: string | null }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: "inline-block",
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        background: color ?? "transparent",
+        border: color ? "1px solid rgba(255, 255, 255, 0.5)" : "1px dashed rgba(255, 255, 255, 0.35)",
+        marginLeft: 8,
+        verticalAlign: "middle",
+      }}
+    />
+  );
+}
 
 export function Toolbar() {
   const queryClient = useQueryClient();
@@ -15,9 +40,13 @@ export function Toolbar() {
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const [activeLineId, setActiveLineId] = useAtom(activeLineIdAtom);
+  const [hideFramesWithoutMarkup, setHideFramesWithoutMarkup] = useAtom(hideFramesWithoutMarkupAtom);
 
   const pointIds = useMemo(() => Object.keys(annotations.pointsById), [annotations.pointsById]);
   const lineIds = useMemo(() => Object.keys(annotations.linesById), [annotations.linesById]);
+
+  const activePointColor = activePointId ? annotations.pointsById[activePointId]?.color ?? null : null;
+  const activeLineColor = activeLineId ? annotations.linesById[activeLineId]?.color ?? null : null;
 
   const saveMutation = useMutation({
     mutationFn: () => saveAnnotations(selectedProjectId!, annotations),
@@ -56,30 +85,40 @@ export function Toolbar() {
       </div>
 
       <label className="toolbar-field">
-        Active point
+        <span>
+          Active point
+          <ColorSwatch color={activePointColor} />
+        </span>
         <select value={activePointId ?? ""} onChange={event => setActivePointId(event.target.value || null)}>
           <option value="">Next new point</option>
 
           {pointIds.map(pointId => (
-            <option key={pointId} value={pointId}>
-              {pointId}
+            <option key={pointId} value={pointId} style={{ color: annotations.pointsById[pointId]?.color ?? undefined }}>
+              {`● ${pointId}`}
             </option>
           ))}
         </select>
       </label>
 
       <label className="toolbar-field">
-        Active line
+        <span>
+          Active line
+          <ColorSwatch color={activeLineColor} />
+        </span>
         <select value={activeLineId ?? ""} onChange={event => setActiveLineId(event.target.value || null)}>
           <option value="">No active line</option>
 
           {lineIds.map(lineId => (
-            <option key={lineId} value={lineId}>
-              {lineId}
+            <option key={lineId} value={lineId} style={{ color: annotations.linesById[lineId]?.color ?? undefined }}>
+              {`● ${lineId}`}
             </option>
           ))}
         </select>
       </label>
+
+      <button type="button" data-active={hideFramesWithoutMarkup} onClick={() => setHideFramesWithoutMarkup(value => !value)}>
+        {hideFramesWithoutMarkup ? "Show all frames" : "Hide unmarked frames"}
+      </button>
 
       <label className="upload-button">
         Upload video
