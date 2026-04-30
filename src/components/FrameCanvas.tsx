@@ -1,6 +1,5 @@
 import { MouseEvent, useMemo, useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
-
 import {
   activeLineIdAtom,
   activeLinePointStartAtom,
@@ -9,6 +8,7 @@ import {
   makeLineColor,
   makeObservationKey,
   makePointColor,
+  pruneEmptyAnnotations,
   selectedImageSetIdAtom,
   toolModeAtom,
   upsertLineOccurrence,
@@ -35,7 +35,6 @@ function colorFromId(id: string, hueOffset = 0): string {
   for (let index = 0; index < id.length; index += 1) {
     hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
   }
-
   return `hsl(${(hash + hueOffset) % 360}, 85%, 55%)`;
 }
 
@@ -47,23 +46,23 @@ function distanceToSegment(point: PointLike, start: PointLike, end: PointLike) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const lengthSquared = dx * dx + dy * dy;
-
   if (lengthSquared === 0) return distance(point, start);
-
   const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
   const projection = { x: start.x + t * dx, y: start.y + t * dy };
   return distance(point, projection);
 }
 
-function lineEndpoints(line: LineOccurrence, positions: Record<string, Record<string, PointPosition>>, observationKey: string) {
+function lineEndpoints(
+  line: LineOccurrence,
+  positions: Record<string, Record<string, PointPosition>>,
+  observationKey: string,
+) {
   if (line.start && line.end) return { start: line.start, end: line.end };
-
   if (line.startPointId && line.endPointId) {
     const start = positions[line.startPointId]?.[observationKey];
     const end = positions[line.endPointId]?.[observationKey];
     if (start && end) return { start, end };
   }
-
   return null;
 }
 
@@ -74,7 +73,6 @@ export function FrameCanvas({ frame }: Props) {
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const [activeLineId, setActiveLineId] = useAtom(activeLineIdAtom);
   const [lineStartPointId, setLineStartPointId] = useAtom(activeLinePointStartAtom);
-
   const [dragging, setDragging] = useState<DragState>(null);
   const [cursorPos, setCursorPos] = useState<ImagePoint | null>(null);
   const [pendingLineStart, setPendingLineStart] = useState<ImagePoint | null>(null);
@@ -108,7 +106,6 @@ export function FrameCanvas({ frame }: Props) {
   function nearestPoint(pos: PointLike) {
     let best: PointPosition | null = null;
     let bestDistance = Infinity;
-
     for (const point of visiblePoints) {
       const d = distance(pos, point);
       if (d < bestDistance) {
@@ -116,40 +113,33 @@ export function FrameCanvas({ frame }: Props) {
         bestDistance = d;
       }
     }
-
     return bestDistance < 1.8 ? best : null;
   }
 
   function nearestLine(pos: PointLike) {
     let best: LineOccurrence | null = null;
     let bestDistance = Infinity;
-
     for (const line of visibleLines) {
       const endpoints = lineEndpoints(line, annotations.pointPositionsByPointId, observationKey);
       if (!endpoints) continue;
-
       const d = distanceToSegment(pos, endpoints.start, endpoints.end);
       if (d < bestDistance) {
         best = line;
         bestDistance = d;
       }
     }
-
     return bestDistance < 1.4 ? best : null;
   }
 
   function createOrPlacePoint(pos: PointLike) {
     if (!selectedImageSetId) return;
-
     const nextPointId = activePointId ?? `point-${Object.keys(annotations.pointsById).length + 1}`;
-
     setAnnotations(current => {
       const existingPoint = current.pointsById[nextPointId];
       const nextPoint = existingPoint ?? {
         id: nextPointId,
         color: makePointColor(Object.keys(current.pointsById).length),
       };
-
       const updated = {
         ...current,
         pointsById: {
@@ -157,7 +147,6 @@ export function FrameCanvas({ frame }: Props) {
           [nextPointId]: nextPoint,
         },
       };
-
       return upsertPointPosition(updated, {
         pointId: nextPointId,
         imageSetId: selectedImageSetId,
@@ -166,32 +155,28 @@ export function FrameCanvas({ frame }: Props) {
         y: pos.y,
       });
     });
-
     setActivePointId(nextPointId);
     setActiveLineId(null);
   }
 
   function createLooseLine(start: ImagePoint, end: ImagePoint) {
     if (!selectedImageSetId) return;
-
-    const lineId = `line-${crypto.randomUUID()}`;
-
+    const nextLineId = activeLineId ?? `line-${crypto.randomUUID()}`;
     setAnnotations(current => {
-      const color = makeLineColor(Object.keys(current.linesById).length);
-
+      const existingLine = current.linesById[nextLineId];
+      const color = existingLine?.color ?? makeLineColor(Object.keys(current.linesById).length);
       const updated = {
         ...current,
         linesById: {
           ...current.linesById,
-          [lineId]: {
-            id: lineId,
+          [nextLineId]: existingLine ?? {
+            id: nextLineId,
             color,
           },
         },
       };
-
       return upsertLineOccurrence(updated, {
-        lineId,
+        lineId: nextLineId,
         imageSetId: selectedImageSetId,
         imageId: frame.id,
         start,
@@ -199,8 +184,7 @@ export function FrameCanvas({ frame }: Props) {
         color,
       });
     });
-
-    setActiveLineId(lineId);
+    setActiveLineId(nextLineId);
     setActivePointId(null);
   }
 
@@ -208,51 +192,45 @@ export function FrameCanvas({ frame }: Props) {
     setAnnotations(current => {
       const positions = { ...(current.pointPositionsByPointId[pointId] ?? {}) };
       delete positions[observationKey];
-
       const lineOccurrencesByLineId = Object.fromEntries(
         Object.entries(current.lineOccurrencesByLineId).map(([lineId, byImage]) => {
           const nextByImage = { ...byImage };
           const occurrence = nextByImage[observationKey];
-
           if (occurrence && (occurrence.startPointId === pointId || occurrence.endPointId === pointId)) {
             delete nextByImage[observationKey];
           }
-
           return [lineId, nextByImage];
         }),
       );
-
-      return {
+      return pruneEmptyAnnotations({
         ...current,
         pointPositionsByPointId: {
           ...current.pointPositionsByPointId,
           [pointId]: positions,
         },
         lineOccurrencesByLineId,
-      };
+      });
     });
+    if (activePointId === pointId) setActivePointId(null);
   }
 
   function deleteLine(lineId: string) {
     setAnnotations(current => {
       const occurrences = { ...(current.lineOccurrencesByLineId[lineId] ?? {}) };
       delete occurrences[observationKey];
-
-      return {
+      return pruneEmptyAnnotations({
         ...current,
         lineOccurrencesByLineId: {
           ...current.lineOccurrencesByLineId,
           [lineId]: occurrences,
         },
-      };
+      });
     });
-
     if (activeLineId === lineId) setActiveLineId(null);
   }
 
   function movePoint(pointId: string, pos: PointLike) {
     if (!selectedImageSetId) return;
-
     setAnnotations(current =>
       upsertPointPosition(current, {
         pointId,
@@ -267,11 +245,9 @@ export function FrameCanvas({ frame }: Props) {
   function moveLine(lineId: string, from: ImagePoint, to: ImagePoint) {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
-
     setAnnotations(current => {
       const occurrence = current.lineOccurrencesByLineId[lineId]?.[observationKey];
       if (!occurrence?.start || !occurrence?.end) return current;
-
       return upsertLineOccurrence(current, {
         ...occurrence,
         color: occurrence.color ?? annotations.linesById[lineId]?.color ?? colorFromId(lineId, 68),
@@ -283,39 +259,33 @@ export function FrameCanvas({ frame }: Props) {
 
   function joinPoint(pointId: string) {
     if (!selectedImageSetId) return;
-
     if (!lineStartPointId) {
       setLineStartPointId(pointId);
       return;
     }
-
     if (lineStartPointId === pointId) {
       setLineStartPointId(null);
       return;
     }
-
     const start = annotations.pointPositionsByPointId[lineStartPointId]?.[observationKey];
     const end = annotations.pointPositionsByPointId[pointId]?.[observationKey];
     if (!start || !end) return;
-
-    const lineId = `line-${crypto.randomUUID()}`;
-
+    const nextLineId = activeLineId ?? `line-${crypto.randomUUID()}`;
     setAnnotations(current => {
-      const color = makeLineColor(Object.keys(current.linesById).length);
-
+      const existingLine = current.linesById[nextLineId];
+      const color = existingLine?.color ?? makeLineColor(Object.keys(current.linesById).length);
       const updated = {
         ...current,
         linesById: {
           ...current.linesById,
-          [lineId]: {
-            id: lineId,
+          [nextLineId]: existingLine ?? {
+            id: nextLineId,
             color,
           },
         },
       };
-
       return upsertLineOccurrence(updated, {
-        lineId,
+        lineId: nextLineId,
         imageSetId: selectedImageSetId,
         imageId: frame.id,
         start: { x: start.x, y: start.y },
@@ -325,8 +295,7 @@ export function FrameCanvas({ frame }: Props) {
         endPointId: pointId,
       });
     });
-
-    setActiveLineId(lineId);
+    setActiveLineId(nextLineId);
     setLineStartPointId(null);
   }
 
@@ -350,10 +319,8 @@ export function FrameCanvas({ frame }: Props) {
     if (toolMode === "new-line") {
       if (!pendingLineStart) {
         setPendingLineStart(pos);
-        setActiveLineId(null);
         return;
       }
-
       createLooseLine(pendingLineStart, pos);
       setPendingLineStart(null);
       return;
@@ -362,17 +329,14 @@ export function FrameCanvas({ frame }: Props) {
     if (hitPoint) {
       setActivePointId(hitPoint.pointId);
       setActiveLineId(null);
-
       if (toolMode === "delete-point") {
         deletePoint(hitPoint.pointId);
         return;
       }
-
       if (toolMode === "move-point") {
         setDragging({ kind: "point", pointId: hitPoint.pointId });
         return;
       }
-
       if (toolMode === "join-points") {
         joinPoint(hitPoint.pointId);
         return;
@@ -391,14 +355,11 @@ export function FrameCanvas({ frame }: Props) {
   function onCanvasMouseMove(event: MouseEvent<HTMLElement>) {
     const pos = imageCoords(event);
     setCursorPos(pos);
-
     if (!dragging) return;
-
     if (dragging.kind === "point") {
       movePoint(dragging.pointId, pos);
       return;
     }
-
     if (dragging.kind === "line") {
       moveLine(dragging.lineId, dragging.last, pos);
       setDragging({ ...dragging, last: pos });
@@ -422,14 +383,16 @@ export function FrameCanvas({ frame }: Props) {
       onMouseUp={finishDragging}
     >
       <img src={frame.url} alt={frame.label} draggable={false} style={{ display: "block", width: "100%" }} />
-
-      <svg className="frame-canvas-overlay" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+      <svg
+        className="frame-canvas-overlay"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      >
         {visibleLines.map(line => {
           const endpoints = lineEndpoints(line, annotations.pointPositionsByPointId, observationKey);
           if (!endpoints) return null;
-
           const active = activeLineId === line.lineId;
-
           return (
             <line
               key={line.lineId}
@@ -444,7 +407,7 @@ export function FrameCanvas({ frame }: Props) {
           );
         })}
 
-        {pendingLineStart && cursorPos && (
+        {pendingLineStart && cursorPos ? (
           <line
             x1={pendingLineStart.x}
             y1={pendingLineStart.y}
@@ -455,13 +418,12 @@ export function FrameCanvas({ frame }: Props) {
             strokeWidth={3}
             vectorEffect="non-scaling-stroke"
           />
-        )}
+        ) : null}
       </svg>
 
       {visiblePoints.map(point => {
         const definition = annotations.pointsById[point.pointId];
         const active = activePointId === point.pointId;
-
         return (
           <div
             key={point.pointId}
@@ -483,7 +445,7 @@ export function FrameCanvas({ frame }: Props) {
         );
       })}
 
-      {cursorPos && (
+      {cursorPos ? (
         <div
           className="frame-cursor-readout"
           style={{
@@ -500,7 +462,7 @@ export function FrameCanvas({ frame }: Props) {
         >
           {cursorPos.x.toFixed(1)}, {cursorPos.y.toFixed(1)}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
-
-import { saveModel } from "../api/client";
-import { activeLineIdAtom, activePointIdAtom, selectedProjectIdAtom } from "../state/annotationAtoms";
+import { saveAnnotations, saveModel } from "../api/client";
+import {
+  activeLineIdAtom,
+  activePointIdAtom,
+  annotationsAtom,
+  pruneEmptyAnnotations,
+  selectedProjectIdAtom,
+} from "../state/annotationAtoms";
 import {
   makeDefaultCuboid,
   modelToolModeAtom,
@@ -11,7 +16,11 @@ import {
   selectedEdgeAtom,
   selectedVertexAtom,
 } from "../state/modelAtoms";
-import type { ImageLineEdgeConstraint, ModelToolMode, PointVertexConstraint } from "../types/reconstruction";
+import type {
+  ImageLineEdgeConstraint,
+  ModelToolMode,
+  PointVertexConstraint,
+} from "../types/reconstruction";
 
 const modes: { value: ModelToolMode; label: string }[] = [
   { value: "select-vertex", label: "Select point" },
@@ -27,7 +36,7 @@ export function ModelControlPill() {
   const selectedProjectId = useAtomValue(selectedProjectIdAtom);
   const activePointId = useAtomValue(activePointIdAtom);
   const activeLineId = useAtomValue(activeLineIdAtom);
-
+  const [annotations, setAnnotations] = useAtom(annotationsAtom);
   const [mode, setMode] = useAtom(modelToolModeAtom);
   const [model, setModel] = useAtom(newestModelAtom);
   const [, setSelectedCuboidId] = useAtom(selectedCuboidIdAtom);
@@ -35,16 +44,24 @@ export function ModelControlPill() {
   const [selectedEdge, setSelectedEdge] = useAtom(selectedEdgeAtom);
 
   const saveMutation = useMutation({
-    mutationFn: () => saveModel(selectedProjectId!, model!),
-    onSuccess: savedModel => {
-      setModel(savedModel);
+    mutationFn: async () => {
+      if (!selectedProjectId) throw new Error("No project selected");
+      const cleanedAnnotations = pruneEmptyAnnotations(annotations);
+      const savedAnnotations = await saveAnnotations(selectedProjectId, cleanedAnnotations);
+      const savedModel = model ? await saveModel(selectedProjectId, model) : null;
+      return { savedAnnotations, savedModel };
+    },
+    onSuccess: ({ savedAnnotations, savedModel }) => {
+      setAnnotations(savedAnnotations);
+      if (savedModel) setModel(savedModel);
+      queryClient.setQueryData(["annotations", selectedProjectId], savedAnnotations);
+      queryClient.invalidateQueries({ queryKey: ["annotations", selectedProjectId] });
       queryClient.invalidateQueries({ queryKey: ["latestModel", selectedProjectId] });
     },
   });
 
   function addCuboid() {
     if (!model) return;
-
     const cuboid = makeDefaultCuboid(Object.keys(model.cuboidsById ?? {}).length);
     const nextModel = {
       ...model,
@@ -55,7 +72,6 @@ export function ModelControlPill() {
       activeCuboidId: cuboid.id,
       updatedAt: new Date().toISOString(),
     };
-
     setModel(nextModel);
     setSelectedCuboidId(cuboid.id);
     setSelectedVertex(null);
@@ -64,16 +80,13 @@ export function ModelControlPill() {
 
   function linkActivePointToSelectedVertex() {
     if (!model || !activePointId || !selectedVertex) return;
-
     const existingConstraint = Object.values(model.pointVertexConstraintsById ?? {}).find(
       constraint =>
         constraint.pointId === activePointId &&
         constraint.vertex.cuboidId === selectedVertex.cuboidId &&
         constraint.vertex.vertexIndex === selectedVertex.vertexIndex,
     );
-
     if (existingConstraint) return;
-
     const constraint: PointVertexConstraint = {
       id: `point-vertex-${crypto.randomUUID()}`,
       pointId: activePointId,
@@ -81,7 +94,6 @@ export function ModelControlPill() {
       confidence: 1.0,
       source: "manual",
     };
-
     setModel({
       ...model,
       pointVertexConstraintsById: {
@@ -95,13 +107,13 @@ export function ModelControlPill() {
 
   function linkActiveLineToSelectedEdge() {
     if (!model || !activeLineId || !selectedEdge) return;
-
     const existingConstraint = Object.values(model.imageLineEdgeConstraintsById ?? {}).find(
-      constraint => constraint.lineId === activeLineId && constraint.edge.cuboidId === selectedEdge.cuboidId && constraint.edge.edgeIndex === selectedEdge.edgeIndex,
+      constraint =>
+        constraint.lineId === activeLineId &&
+        constraint.edge.cuboidId === selectedEdge.cuboidId &&
+        constraint.edge.edgeIndex === selectedEdge.edgeIndex,
     );
-
     if (existingConstraint) return;
-
     const constraint: ImageLineEdgeConstraint = {
       id: `line-edge-${crypto.randomUUID()}`,
       lineId: activeLineId,
@@ -109,7 +121,6 @@ export function ModelControlPill() {
       confidence: 1.0,
       source: "manual",
     };
-
     setModel({
       ...model,
       imageLineEdgeConstraintsById: {
@@ -129,8 +140,8 @@ export function ModelControlPill() {
       {modes.map(item => (
         <button
           key={item.value}
-          data-active={mode === item.value}
           type="button"
+          className={mode === item.value ? "tool active" : "tool"}
           onClick={() => {
             setMode(item.value);
             if (item.value === "add-cuboid") addCuboid();
@@ -140,16 +151,31 @@ export function ModelControlPill() {
         </button>
       ))}
 
-      <button type="button" disabled={!canLinkPointToVertex} onClick={linkActivePointToSelectedVertex}>
+      <button
+        className="tool"
+        type="button"
+        disabled={!canLinkPointToVertex}
+        onClick={linkActivePointToSelectedVertex}
+      >
         Link image point to cuboid corner
       </button>
 
-      <button type="button" disabled={!canLinkLineToEdge} onClick={linkActiveLineToSelectedEdge}>
+      <button
+        className="tool"
+        type="button"
+        disabled={!canLinkLineToEdge}
+        onClick={linkActiveLineToSelectedEdge}
+      >
         Link image line to cuboid edge
       </button>
 
-      <button type="button" disabled={!model || !selectedProjectId || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-        {saveMutation.isPending ? "Saving model..." : "Save model"}
+      <button
+        className="tool save"
+        type="button"
+        disabled={!selectedProjectId || saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+      >
+        {saveMutation.isPending ? "Saving..." : "Save"}
       </button>
     </div>
   );

@@ -1,51 +1,29 @@
-import { useMemo, useState } from "react";
-
+import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue } from "jotai";
-
-import { saveAnnotations, uploadVideoToProject } from "../api/client";
+import { saveAnnotations, saveModel, uploadVideoToProject } from "../api/client";
 import {
   activeLineIdAtom,
   activePointIdAtom,
   annotationsAtom,
   hideFramesWithoutMarkupAtom,
+  pruneEmptyAnnotations,
   selectedProjectIdAtom,
   toolModeAtom,
 } from "../state/annotationAtoms";
+import { newestModelAtom } from "../state/modelAtoms";
 
-type ColorOption = {
-  id: string;
-  color: string | null;
-  label: string;
-};
+type ColorOption = { id: string; color: string | null; label: string };
 
 function fallbackColorFromId(id: string, hueOffset = 0): string {
   let hash = 0;
   for (let index = 0; index < id.length; index += 1) {
     hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
   }
-
   return `hsl(${(hash + hueOffset) % 360}, 85%, 55%)`;
 }
 
-function ColorSwatch({ color }: { color: string | null }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: "inline-block",
-        width: 12,
-        height: 12,
-        borderRadius: "50%",
-        background: color ?? "transparent",
-        border: color ? "1px solid rgba(255, 255, 255, 0.5)" : "1px dashed rgba(255, 255, 255, 0.35)",
-        flex: "0 0 auto",
-      }}
-    />
-  );
-}
-
-function ColorDropdown({
+function ActiveSelect({
   label,
   emptyLabel,
   value,
@@ -58,100 +36,41 @@ function ColorDropdown({
   options: ColorOption[];
   onChange: (value: string | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const selected = value ? options.find(option => option.id === value) ?? null : null;
 
-  function choose(nextValue: string | null) {
-    onChange(nextValue);
-    setOpen(false);
-  }
-
   return (
-    <div className="toolbar-field" style={{ position: "relative" }}>
-      <span>{label}</span>
-
-      <button
-        type="button"
-        onClick={() => setOpen(current => !current)}
-        style={{
-          minWidth: 220,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          justifyContent: "flex-start",
-        }}
-      >
-        <ColorSwatch color={selected?.color ?? null} />
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected?.label ?? emptyLabel}</span>
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
+    <label className="toolbar-field">
+      {label}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <span
+          aria-hidden="true"
           style={{
-            position: "absolute",
-            zIndex: 50,
-            top: "100%",
-            left: 0,
-            minWidth: 260,
-            maxHeight: 260,
-            overflowY: "auto",
-            padding: 6,
-            borderRadius: 8,
-            background: "#111827",
-            border: "1px solid rgba(255, 255, 255, 0.16)",
-            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.35)",
+            width: "0.8rem",
+            height: "0.8rem",
+            borderRadius: "999px",
+            border: "1px solid #c9d3e1",
+            background: selected?.color ?? "transparent",
+            flex: "0 0 auto",
           }}
-        >
-          <button
-            type="button"
-            onClick={() => choose(null)}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              justifyContent: "flex-start",
-              marginBottom: 4,
-            }}
-          >
-            <ColorSwatch color={null} />
-            {emptyLabel}
-          </button>
-
+        />
+        <select value={value ?? ""} onChange={event => onChange(event.target.value || null)}>
+          <option value="">{emptyLabel}</option>
           {options.map(option => (
-            <button
-              key={option.id}
-              type="button"
-              role="option"
-              aria-selected={option.id === value}
-              onClick={() => choose(option.id)}
-              data-active={option.id === value}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                justifyContent: "flex-start",
-                marginTop: 4,
-              }}
-            >
-              <ColorSwatch color={option.color} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{option.label}</span>
-            </button>
+            <option key={option.id} value={option.id} style={{ color: option.color ?? undefined }}>
+              {`● ${option.label}`}
+            </option>
           ))}
-        </div>
-      )}
-    </div>
+        </select>
+      </span>
+    </label>
   );
 }
 
 export function Toolbar() {
   const queryClient = useQueryClient();
-
   const selectedProjectId = useAtomValue(selectedProjectIdAtom);
-  const [annotations] = useAtom(annotationsAtom);
-
+  const [annotations, setAnnotations] = useAtom(annotationsAtom);
+  const [model, setModel] = useAtom(newestModelAtom);
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
   const [activePointId, setActivePointId] = useAtom(activePointIdAtom);
   const [activeLineId, setActiveLineId] = useAtom(activeLineIdAtom);
@@ -168,11 +87,10 @@ export function Toolbar() {
   );
 
   const lineOptions = useMemo(() => {
-    const ids = new Set<string>([
+    const ids = new Set([
       ...Object.keys(annotations.linesById),
       ...Object.keys(annotations.lineOccurrencesByLineId),
     ]);
-
     return [...ids].map(lineId => {
       const firstOccurrence = Object.values(annotations.lineOccurrencesByLineId[lineId] ?? {})[0];
       return {
@@ -184,8 +102,20 @@ export function Toolbar() {
   }, [annotations.linesById, annotations.lineOccurrencesByLineId]);
 
   const saveMutation = useMutation({
-    mutationFn: () => saveAnnotations(selectedProjectId!, annotations),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["annotations", selectedProjectId] }),
+    mutationFn: async () => {
+      if (!selectedProjectId) throw new Error("No project selected");
+      const cleanedAnnotations = pruneEmptyAnnotations(annotations);
+      const savedAnnotations = await saveAnnotations(selectedProjectId, cleanedAnnotations);
+      const savedModel = model ? await saveModel(selectedProjectId, model) : null;
+      return { savedAnnotations, savedModel };
+    },
+    onSuccess: ({ savedAnnotations, savedModel }) => {
+      setAnnotations(savedAnnotations);
+      if (savedModel) setModel(savedModel);
+      queryClient.setQueryData(["annotations", selectedProjectId], savedAnnotations);
+      queryClient.invalidateQueries({ queryKey: ["annotations", selectedProjectId] });
+      queryClient.invalidateQueries({ queryKey: ["latestModel", selectedProjectId] });
+    },
   });
 
   const uploadMutation = useMutation({
@@ -195,68 +125,70 @@ export function Toolbar() {
 
   return (
     <div className="toolbar">
-      <div className="toolbar-group">
-        <button data-active={toolMode === "new-point"} onClick={() => setToolMode("new-point")}>
-          New point
+      <div className="toolbar-group" style={{ flexBasis: "100%" }}>
+        <label className="upload-button">
+          Upload video
+          <input
+            type="file"
+            accept="video/*"
+            hidden
+            disabled={!selectedProjectId || uploadMutation.isPending}
+            onChange={event => {
+              const file = event.target.files?.[0];
+              if (file) uploadMutation.mutate(file);
+              event.currentTarget.value = "";
+            }}
+          />
+        </label>
+
+        <button type="button" onClick={() => setHideFramesWithoutMarkup(value => !value)}>
+          {hideFramesWithoutMarkup ? "Show all frames" : "Hide unmarked frames"}
         </button>
-        <button data-active={toolMode === "move-point"} onClick={() => setToolMode("move-point")}>
-          Move point
-        </button>
-        <button data-active={toolMode === "delete-point"} onClick={() => setToolMode("delete-point")}>
-          Delete point
-        </button>
-        <button data-active={toolMode === "join-points"} onClick={() => setToolMode("join-points")}>
-          Join points
-        </button>
-        <button data-active={toolMode === "new-line"} onClick={() => setToolMode("new-line")}>
-          New line
-        </button>
-        <button data-active={toolMode === "move-line"} onClick={() => setToolMode("move-line")}>
-          Move line
-        </button>
-        <button data-active={toolMode === "delete-line"} onClick={() => setToolMode("delete-line")}>
-          Delete line
+
+        <button type="button" disabled={!selectedProjectId || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+          {saveMutation.isPending ? "Saving..." : "Save"}
         </button>
       </div>
 
-      <ColorDropdown
-        label="Active point"
-        emptyLabel="Next new point"
-        value={activePointId}
-        options={pointOptions}
-        onChange={setActivePointId}
-      />
-
-      <ColorDropdown
-        label="Active line"
-        emptyLabel="No active line"
-        value={activeLineId}
-        options={lineOptions}
-        onChange={setActiveLineId}
-      />
-
-      <button type="button" data-active={hideFramesWithoutMarkup} onClick={() => setHideFramesWithoutMarkup(value => !value)}>
-        {hideFramesWithoutMarkup ? "Show all frames" : "Hide unmarked frames"}
-      </button>
-
-      <label className="upload-button">
-        Upload video
-        <input
-          type="file"
-          accept="video/*"
-          hidden
-          disabled={!selectedProjectId}
-          onChange={event => {
-            const file = event.target.files?.[0];
-            if (file) uploadMutation.mutate(file);
-            event.currentTarget.value = "";
+      <div className="toolbar-group" style={{ flexBasis: "100%" }}>
+        <button data-active={toolMode === "new-point"} type="button" onClick={() => setToolMode("new-point")}>
+          New point
+        </button>
+        <button data-active={toolMode === "delete-point"} type="button" onClick={() => setToolMode("delete-point")}>
+          Delete point
+        </button>
+        <ActiveSelect
+          label="Active point"
+          emptyLabel="Next new point"
+          value={activePointId}
+          options={pointOptions}
+          onChange={value => {
+            setActivePointId(value);
+            if (value) setActiveLineId(null);
           }}
         />
-      </label>
+      </div>
 
-      <button disabled={!selectedProjectId || saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-        Save annotations
-      </button>
+      <div className="toolbar-group" style={{ flexBasis: "100%" }}>
+        <button data-active={toolMode === "new-line"} type="button" onClick={() => setToolMode("new-line")}>
+          New line
+        </button>
+        <button data-active={toolMode === "delete-line"} type="button" onClick={() => setToolMode("delete-line")}>
+          Delete line
+        </button>
+        <ActiveSelect
+          label="Active line"
+          emptyLabel="Next new line"
+          value={activeLineId}
+          options={lineOptions}
+          onChange={value => {
+            setActiveLineId(value);
+            if (value) setActivePointId(null);
+          }}
+        />
+      </div>
+
+      {saveMutation.error ? <div className="inline-error">Save failed: {saveMutation.error.message}</div> : null}
     </div>
   );
 }

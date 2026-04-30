@@ -1,6 +1,11 @@
 import { atom } from "jotai";
-
-import type { AnnotationState, ImageSet, LineOccurrence, PointPosition, ToolMode } from "../types/annotations";
+import type {
+  AnnotationState,
+  ImageSet,
+  LineOccurrence,
+  PointPosition,
+  ToolMode,
+} from "../types/annotations";
 
 export const emptyAnnotations: AnnotationState = {
   pointsById: {},
@@ -48,9 +53,37 @@ export function makeObservationKey(imageSetId: string, imageId: string): string 
   return `${imageSetId}:${imageId}`;
 }
 
+export function pruneEmptyAnnotations(state: AnnotationState): AnnotationState {
+  const pointPositionsByPointId = Object.fromEntries(
+    Object.entries(state.pointPositionsByPointId)
+      .map(([pointId, byImage]) => [pointId, Object.fromEntries(Object.entries(byImage ?? {}))])
+      .filter(([, byImage]) => Object.keys(byImage as Record<string, PointPosition>).length > 0),
+  ) as AnnotationState["pointPositionsByPointId"];
+
+  const lineOccurrencesByLineId = Object.fromEntries(
+    Object.entries(state.lineOccurrencesByLineId)
+      .map(([lineId, byImage]) => [lineId, Object.fromEntries(Object.entries(byImage ?? {}))])
+      .filter(([, byImage]) => Object.keys(byImage as Record<string, LineOccurrence>).length > 0),
+  ) as AnnotationState["lineOccurrencesByLineId"];
+
+  const pointsById = Object.fromEntries(
+    Object.entries(state.pointsById).filter(([pointId]) => Boolean(pointPositionsByPointId[pointId])),
+  ) as AnnotationState["pointsById"];
+
+  const linesById = Object.fromEntries(
+    Object.entries(state.linesById).filter(([lineId]) => Boolean(lineOccurrencesByLineId[lineId])),
+  ) as AnnotationState["linesById"];
+
+  return {
+    pointsById,
+    pointPositionsByPointId,
+    linesById,
+    lineOccurrencesByLineId,
+  };
+}
+
 export function upsertPointPosition(state: AnnotationState, position: PointPosition): AnnotationState {
   const observationKey = makeObservationKey(position.imageSetId, position.imageId);
-
   return {
     ...state,
     pointPositionsByPointId: {
@@ -65,7 +98,6 @@ export function upsertPointPosition(state: AnnotationState, position: PointPosit
 
 export function upsertLineOccurrence(state: AnnotationState, occurrence: LineOccurrence): AnnotationState {
   const observationKey = makeObservationKey(occurrence.imageSetId, occurrence.imageId);
-
   return {
     ...state,
     lineOccurrencesByLineId: {
@@ -80,9 +112,9 @@ export function upsertLineOccurrence(state: AnnotationState, occurrence: LineOcc
 
 export function frameHasMarkup(state: AnnotationState, imageSetId: string, imageId: string): boolean {
   const observationKey = makeObservationKey(imageSetId, imageId);
-
-  const hasPoint = Object.values(state.pointPositionsByPointId).some(byImage => Boolean(byImage?.[observationKey]));
+  const hasPoint = Object.values(state.pointPositionsByPointId).some(byImage =>
+    Boolean(byImage?.[observationKey]),
+  );
   if (hasPoint) return true;
-
   return Object.values(state.lineOccurrencesByLineId).some(byImage => Boolean(byImage?.[observationKey]));
 }
