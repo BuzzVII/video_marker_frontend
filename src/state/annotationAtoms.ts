@@ -53,25 +53,35 @@ export function makeObservationKey(imageSetId: string, imageId: string): string 
   return `${imageSetId}:${imageId}`;
 }
 
-export function pruneEmptyAnnotations(state: AnnotationState): AnnotationState {
+export function normalizeAnnotations(state: Partial<AnnotationState> | null | undefined): AnnotationState {
+  return {
+    pointsById: state?.pointsById ?? {},
+    pointPositionsByPointId: state?.pointPositionsByPointId ?? {},
+    linesById: state?.linesById ?? {},
+    lineOccurrencesByLineId: state?.lineOccurrencesByLineId ?? {},
+  };
+}
+
+export function pruneEmptyAnnotations(state: Partial<AnnotationState> | null | undefined): AnnotationState {
+  const normalized = normalizeAnnotations(state);
   const pointPositionsByPointId = Object.fromEntries(
-    Object.entries(state.pointPositionsByPointId)
+    Object.entries(normalized.pointPositionsByPointId)
       .map(([pointId, byImage]) => [pointId, Object.fromEntries(Object.entries(byImage ?? {}))])
       .filter(([, byImage]) => Object.keys(byImage as Record<string, PointPosition>).length > 0),
   ) as AnnotationState["pointPositionsByPointId"];
 
   const lineOccurrencesByLineId = Object.fromEntries(
-    Object.entries(state.lineOccurrencesByLineId)
+    Object.entries(normalized.lineOccurrencesByLineId)
       .map(([lineId, byImage]) => [lineId, Object.fromEntries(Object.entries(byImage ?? {}))])
       .filter(([, byImage]) => Object.keys(byImage as Record<string, LineOccurrence>).length > 0),
   ) as AnnotationState["lineOccurrencesByLineId"];
 
   const pointsById = Object.fromEntries(
-    Object.entries(state.pointsById).filter(([pointId]) => Boolean(pointPositionsByPointId[pointId])),
+    Object.entries(normalized.pointsById).filter(([pointId]) => Boolean(pointPositionsByPointId[pointId])),
   ) as AnnotationState["pointsById"];
 
   const linesById = Object.fromEntries(
-    Object.entries(state.linesById).filter(([lineId]) => Boolean(lineOccurrencesByLineId[lineId])),
+    Object.entries(normalized.linesById).filter(([lineId]) => Boolean(lineOccurrencesByLineId[lineId])),
   ) as AnnotationState["linesById"];
 
   return {

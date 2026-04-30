@@ -7,6 +7,7 @@ import {
   activePointIdAtom,
   annotationsAtom,
   hideFramesWithoutMarkupAtom,
+  normalizeAnnotations,
   pruneEmptyAnnotations,
   selectedProjectIdAtom,
   toolModeAtom,
@@ -76,35 +77,37 @@ export function Toolbar() {
   const [activeLineId, setActiveLineId] = useAtom(activeLineIdAtom);
   const [hideFramesWithoutMarkup, setHideFramesWithoutMarkup] = useAtom(hideFramesWithoutMarkupAtom);
 
+  const normalizedAnnotations = useMemo(() => normalizeAnnotations(annotations), [annotations]);
+
   const pointOptions = useMemo(
     () =>
-      Object.keys(annotations.pointsById).map(pointId => ({
+      Object.keys(normalizedAnnotations.pointsById).map(pointId => ({
         id: pointId,
-        color: annotations.pointsById[pointId]?.color ?? fallbackColorFromId(pointId, 0),
+        color: normalizedAnnotations.pointsById[pointId]?.color ?? fallbackColorFromId(pointId, 0),
         label: pointId,
       })),
-    [annotations.pointsById],
+    [normalizedAnnotations.pointsById],
   );
 
   const lineOptions = useMemo(() => {
     const ids = new Set([
-      ...Object.keys(annotations.linesById),
-      ...Object.keys(annotations.lineOccurrencesByLineId),
+      ...Object.keys(normalizedAnnotations.linesById),
+      ...Object.keys(normalizedAnnotations.lineOccurrencesByLineId),
     ]);
     return [...ids].map(lineId => {
-      const firstOccurrence = Object.values(annotations.lineOccurrencesByLineId[lineId] ?? {})[0];
+      const firstOccurrence = Object.values(normalizedAnnotations.lineOccurrencesByLineId[lineId] ?? {})[0];
       return {
         id: lineId,
-        color: annotations.linesById[lineId]?.color ?? firstOccurrence?.color ?? fallbackColorFromId(lineId, 68),
+        color: normalizedAnnotations.linesById[lineId]?.color ?? firstOccurrence?.color ?? fallbackColorFromId(lineId, 68),
         label: lineId,
       };
     });
-  }, [annotations.linesById, annotations.lineOccurrencesByLineId]);
+  }, [normalizedAnnotations.linesById, normalizedAnnotations.lineOccurrencesByLineId]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selectedProjectId) throw new Error("No project selected");
-      const cleanedAnnotations = pruneEmptyAnnotations(annotations);
+      const cleanedAnnotations = pruneEmptyAnnotations(normalizedAnnotations);
       const savedAnnotations = await saveAnnotations(selectedProjectId, cleanedAnnotations);
       const savedModel = model ? await saveModel(selectedProjectId, model) : null;
       return { savedAnnotations, savedModel };

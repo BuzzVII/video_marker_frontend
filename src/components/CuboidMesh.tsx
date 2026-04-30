@@ -60,40 +60,41 @@ function edgeRotation(cuboid: Cuboid, edgeIndex: number): [number, number, numbe
 function faceDefinitions(cuboid: Cuboid): FaceRenderDefinition[] {
   const [cx, cy, cz] = cuboid.center;
   const [sx, sy, sz] = cuboid.size;
+  const epsilon = Math.max(sx, sy, sz) * 0.006;
   return [
     {
       faceId: "left",
-      position: [cx - sx / 2, cy, cz],
+      position: [cx - sx / 2 - epsilon, cy, cz],
       rotation: [0, -Math.PI / 2, 0],
       args: [sy, sz],
     },
     {
       faceId: "right",
-      position: [cx + sx / 2, cy, cz],
+      position: [cx + sx / 2 + epsilon, cy, cz],
       rotation: [0, Math.PI / 2, 0],
       args: [sy, sz],
     },
     {
       faceId: "front",
-      position: [cx, cy - sy / 2, cz],
+      position: [cx, cy - sy / 2 - epsilon, cz],
       rotation: [Math.PI / 2, 0, 0],
       args: [sx, sz],
     },
     {
       faceId: "back",
-      position: [cx, cy + sy / 2, cz],
+      position: [cx, cy + sy / 2 + epsilon, cz],
       rotation: [-Math.PI / 2, 0, 0],
       args: [sx, sz],
     },
     {
       faceId: "top",
-      position: [cx, cy, cz + sz / 2],
+      position: [cx, cy, cz + sz / 2 + epsilon],
       rotation: [0, 0, 0],
       args: [sx, sy],
     },
     {
       faceId: "bottom",
-      position: [cx, cy, cz - sz / 2],
+      position: [cx, cy, cz - sz / 2 - epsilon],
       rotation: [Math.PI, 0, 0],
       args: [sx, sy],
     },
@@ -256,6 +257,7 @@ export function CuboidMesh({ cuboid }: Props) {
             key={face.faceId}
             position={face.position}
             rotation={face.rotation}
+            renderOrder={10}
             onClick={event => onFaceClick(face.faceId, event)}
           >
             <planeGeometry args={face.args} />

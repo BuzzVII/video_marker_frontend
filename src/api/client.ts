@@ -1,5 +1,6 @@
 import { API_ENDPOINTS, apiUrl } from "./endpoints.js";
 import type { AnnotationState, ImageSet, ImageSetSummary, ProjectSummary } from "../types/annotations";
+import { normalizeAnnotations } from "../state/annotationAtoms";
 import type { EdgeLengthConstraint, ReconstructionModel } from "../types/reconstruction";
 import { normalizeReconstructionModel } from "../utils/reconstructionModel";
 
@@ -87,14 +88,23 @@ export async function fetchImageSet(id: string): Promise<ImageSet> {
 }
 
 export async function fetchAnnotations(projectId: string): Promise<AnnotationState> {
-  return requestJson(API_ENDPOINTS.annotations(projectId));
+  try {
+    const raw = await requestJson<Partial<AnnotationState> | null>(API_ENDPOINTS.annotations(projectId));
+    return normalizeAnnotations(raw);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("404 ")) {
+      return normalizeAnnotations(null);
+    }
+    throw error;
+  }
 }
 
 export async function saveAnnotations(projectId: string, annotations: AnnotationState): Promise<AnnotationState> {
-  return requestJson(API_ENDPOINTS.saveAnnotations(projectId), {
+  const raw = await requestJson<Partial<AnnotationState> | null>(API_ENDPOINTS.saveAnnotations(projectId), {
     method: "PUT",
-    body: JSON.stringify(annotations),
+    body: JSON.stringify(normalizeAnnotations(annotations)),
   });
+  return normalizeAnnotations(raw);
 }
 
 export async function uploadVideoToProject(projectId: string, file: File): Promise<ImageSetSummary> {
@@ -110,9 +120,16 @@ export async function fetchReconstructionExport(projectId: string) {
   return requestJson(API_ENDPOINTS.exportAnnotations(projectId));
 }
 
-export async function fetchLatestModel(projectId: string): Promise<ReconstructionModel> {
-  const raw = await requestJson(API_ENDPOINTS.latestModel(projectId));
-  return normalizeReconstructionModel(raw, projectId);
+export async function fetchLatestModel(projectId: string): Promise<ReconstructionModel | null> {
+  try {
+    const raw = await requestJson(API_ENDPOINTS.latestModel(projectId));
+    return normalizeReconstructionModel(raw, projectId);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("404 ")) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createModel(projectId: string, model: ReconstructionModel): Promise<ReconstructionModel> {
