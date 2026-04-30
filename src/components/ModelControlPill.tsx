@@ -14,13 +14,16 @@ import {
   newestModelAtom,
   selectedCuboidIdAtom,
   selectedEdgeAtom,
+  selectedFacesAtom,
   selectedVertexAtom,
 } from "../state/modelAtoms";
 import type {
+  FaceAssociation,
   ImageLineEdgeConstraint,
   ModelToolMode,
   PointVertexConstraint,
 } from "../types/reconstruction";
+import { sameFaceRef } from "../types/reconstruction";
 
 const modes: { value: ModelToolMode; label: string }[] = [
   { value: "select-vertex", label: "Select point" },
@@ -30,6 +33,10 @@ const modes: { value: ModelToolMode; label: string }[] = [
   { value: "delete-cuboid", label: "Delete cuboid" },
   { value: "add-edge-length", label: "Add length to edge" },
 ];
+
+function faceLabel(face: { cuboidId: string; faceId: string }): string {
+  return `${face.cuboidId.slice(0, 12)} ${face.faceId}`;
+}
 
 export function ModelControlPill() {
   const queryClient = useQueryClient();
@@ -42,6 +49,7 @@ export function ModelControlPill() {
   const [, setSelectedCuboidId] = useAtom(selectedCuboidIdAtom);
   const [selectedVertex, setSelectedVertex] = useAtom(selectedVertexAtom);
   const [selectedEdge, setSelectedEdge] = useAtom(selectedEdgeAtom);
+  const [selectedFaces, setSelectedFaces] = useAtom(selectedFacesAtom);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -76,6 +84,7 @@ export function ModelControlPill() {
     setSelectedCuboidId(cuboid.id);
     setSelectedVertex(null);
     setSelectedEdge(null);
+    setSelectedFaces([]);
   }
 
   function linkActivePointToSelectedVertex() {
@@ -132,8 +141,53 @@ export function ModelControlPill() {
     });
   }
 
+  function selectedFacesAreAlreadySameWall(): boolean {
+    if (!model || selectedFaces.length !== 2) return false;
+    const [a, b] = selectedFaces;
+    return Object.values(model.faceAssociationsById ?? {}).some(
+      association =>
+        association.kind === "same_wall" &&
+        association.faces.some(face => sameFaceRef(face, a)) &&
+        association.faces.some(face => sameFaceRef(face, b)),
+    );
+  }
+
+  function markSelectedFacesAsSameWall() {
+    if (!model || selectedFaces.length !== 2 || selectedFacesAreAlreadySameWall()) return;
+    const now = new Date().toISOString();
+    const association: FaceAssociation = {
+      id: `face-association-${crypto.randomUUID()}`,
+      kind: "same_wall",
+      faces: [selectedFaces[0], selectedFaces[1]],
+      confidence: 1.0,
+      source: "manual",
+      createdAt: now,
+    };
+    setModel({
+      ...model,
+      faceAssociationsById: {
+        ...(model.faceAssociationsById ?? {}),
+        [association.id]: association,
+      },
+      activeFaces: selectedFaces,
+      updatedAt: now,
+    });
+  }
+
+  function clearSelectedFaces() {
+    setSelectedFaces([]);
+    if (!model) return;
+    setModel({
+      ...model,
+      activeFaces: [],
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   const canLinkPointToVertex = Boolean(model && activePointId && selectedVertex);
   const canLinkLineToEdge = Boolean(model && activeLineId && selectedEdge);
+  const sameWallExists = selectedFacesAreAlreadySameWall();
+  const canMarkSameWall = Boolean(model && selectedFaces.length === 2 && !sameWallExists);
 
   return (
     <div className="model-control-pill">
@@ -167,6 +221,18 @@ export function ModelControlPill() {
         onClick={linkActiveLineToSelectedEdge}
       >
         Link image line to cuboid edge
+      </button>
+
+      <span className="tool" title={selectedFaces.map(faceLabel).join("\n") || "No selected faces"}>
+        Selected faces: {selectedFaces.length}
+      </span>
+
+      <button className="tool" type="button" disabled={!canMarkSameWall} onClick={markSelectedFacesAsSameWall}>
+        {sameWallExists ? "Already same wall" : "Same wall"}
+      </button>
+
+      <button className="tool" type="button" disabled={selectedFaces.length === 0} onClick={clearSelectedFaces}>
+        Clear faces
       </button>
 
       <button

@@ -1,10 +1,15 @@
 import { atom } from "jotai";
-
-import type { Cuboid, CuboidEdgeRef, CuboidVertexRef, ModelToolMode, ReconstructionModel } from "../types/reconstruction";
+import type {
+  Cuboid,
+  CuboidEdgeRef,
+  CuboidFaceRef,
+  CuboidVertexRef,
+  ModelToolMode,
+  ReconstructionModel,
+} from "../types/reconstruction";
 
 export function makeEmptyModel(projectId: string): ReconstructionModel {
   const now = new Date().toISOString();
-
   return {
     id: `model-${crypto.randomUUID()}`,
     projectId,
@@ -13,9 +18,12 @@ export function makeEmptyModel(projectId: string): ReconstructionModel {
     pointVertexConstraintsById: {},
     imageLineEdgeConstraintsById: {},
     edgeLengthConstraintsById: {},
+    faceAssociationsById: {},
+    wallFeaturesById: {},
     activeCuboidId: null,
     activeVertex: null,
     activeEdge: null,
+    activeFaces: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -38,4 +46,5 @@ export const modelToolModeAtom = atom<ModelToolMode>("select-vertex");
 export const selectedCuboidIdAtom = atom<string | null>(null);
 export const selectedVertexAtom = atom<CuboidVertexRef | null>(null);
 export const selectedEdgeAtom = atom<CuboidEdgeRef | null>(null);
+export const selectedFacesAtom = atom<CuboidFaceRef[]>([]);
 export const isEdgeLengthModalOpenAtom = atom(false);

@@ -1,12 +1,12 @@
 import { makeEmptyModel } from "../state/modelAtoms";
 import type {
   Cuboid,
-  CuboidEdgeRef,
-  CuboidVertexRef,
   EdgeLengthConstraint,
+  FaceAssociation,
   ImageLineEdgeConstraint,
   PointVertexConstraint,
   ReconstructionModel,
+  WallFeature,
 } from "../types/reconstruction";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -15,6 +15,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function recordOrEmpty<T>(value: unknown): Record<string, T> {
   return isRecord(value) ? (value as Record<string, T>) : {};
+}
+
+function arrayOrEmpty<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
 }
 
 function valueOrNull<T>(value: unknown): T | null {
@@ -44,11 +48,16 @@ export function normalizeReconstructionModel(raw: unknown, projectId: string): R
     version: typeof payload.version === "number" ? payload.version : fallback.version,
     cuboidsById: recordOrEmpty<Cuboid>(payload.cuboidsById),
     pointVertexConstraintsById: recordOrEmpty<PointVertexConstraint>(payload.pointVertexConstraintsById),
-    imageLineEdgeConstraintsById: recordOrEmpty<ImageLineEdgeConstraint>(payload.imageLineEdgeConstraintsById ?? payload.lineEdgeConstraintsById),
+    imageLineEdgeConstraintsById: recordOrEmpty<ImageLineEdgeConstraint>(
+      payload.imageLineEdgeConstraintsById ?? payload.lineEdgeConstraintsById,
+    ),
     edgeLengthConstraintsById: recordOrEmpty<EdgeLengthConstraint>(payload.edgeLengthConstraintsById),
+    faceAssociationsById: recordOrEmpty<FaceAssociation>(payload.faceAssociationsById),
+    wallFeaturesById: recordOrEmpty<WallFeature>(payload.wallFeaturesById),
     activeCuboidId: valueOrNull<string>(payload.activeCuboidId),
-    activeVertex: valueOrNull<CuboidVertexRef>(payload.activeVertex),
-    activeEdge: valueOrNull<CuboidEdgeRef>(payload.activeEdge),
+    activeVertex: valueOrNull(payload.activeVertex),
+    activeEdge: valueOrNull(payload.activeEdge),
+    activeFaces: arrayOrEmpty(payload.activeFaces),
     createdAt: typeof payload.createdAt === "string" ? payload.createdAt : fallback.createdAt,
     updatedAt: typeof payload.updatedAt === "string" ? payload.updatedAt : fallback.updatedAt,
   };

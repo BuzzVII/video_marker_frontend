@@ -35,6 +35,56 @@ export type CuboidEdgeRef = {
   endVertexIndex: number;
 };
 
+export type FaceId = "left" | "right" | "front" | "back" | "top" | "bottom";
+
+export type CuboidFaceRef = {
+  cuboidId: string;
+  faceId: FaceId;
+};
+
+export type FaceAssociationKind = "same_wall";
+
+export type FaceAssociation = {
+  id: string;
+  kind: FaceAssociationKind;
+  faces: [CuboidFaceRef, CuboidFaceRef];
+  source: "manual" | "solver";
+  confidence?: number;
+  createdAt: string;
+};
+
+export type WallFeatureKind = "door" | "window" | "open_passage";
+
+export type WallFeatureObservation = {
+  frameId: string;
+  imageSetId?: string;
+  pointIds?: string[];
+  lineIds?: string[];
+  polygon?: [number, number][];
+};
+
+export type WallFeature = {
+  id: string;
+  kind: WallFeatureKind;
+  hostFace: CuboidFaceRef;
+  connectsTo?: CuboidFaceRef;
+  dimensions?: {
+    width?: number;
+    height?: number;
+    depth?: number;
+    unit?: "m" | "mm";
+  };
+  localRect?: {
+    u0?: number;
+    v0?: number;
+    u1?: number;
+    v1?: number;
+  };
+  observationsByFrameId?: Record<string, WallFeatureObservation>;
+  source: "manual" | "solver";
+  createdAt: string;
+};
+
 export type PointVertexConstraint = {
   id: string;
   pointId: string;
@@ -68,9 +118,12 @@ export type ReconstructionModel = {
   pointVertexConstraintsById: Record<string, PointVertexConstraint>;
   imageLineEdgeConstraintsById: Record<string, ImageLineEdgeConstraint>;
   edgeLengthConstraintsById: Record<string, EdgeLengthConstraint>;
+  faceAssociationsById: Record<string, FaceAssociation>;
+  wallFeaturesById: Record<string, WallFeature>;
   activeCuboidId: string | null;
   activeVertex: CuboidVertexRef | null;
   activeEdge: CuboidEdgeRef | null;
+  activeFaces: CuboidFaceRef[];
   createdAt: string;
   updatedAt: string;
 };
@@ -100,3 +153,9 @@ export const localCuboidVertices: Vec3[] = [
   [0.5, 0.5, 0.5],
   [-0.5, 0.5, 0.5],
 ];
+
+export const cuboidFaceIds: FaceId[] = ["left", "right", "front", "back", "top", "bottom"];
+
+export function sameFaceRef(a: CuboidFaceRef, b: CuboidFaceRef): boolean {
+  return a.cuboidId === b.cuboidId && a.faceId === b.faceId;
+}
