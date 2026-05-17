@@ -3,6 +3,7 @@ import { Grid, OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { CuboidScene } from "./CuboidScene";
 import { EdgeLengthModal } from "./EdgeLengthModal";
 import { ModelControlPill } from "./ModelControlPill";
+import { RadianceFieldPanel } from "./RadianceFieldPanel";
 
 export function ReconstructionModelView() {
   return (
@@ -13,6 +14,7 @@ export function ReconstructionModelView() {
           <p>Rectangular cuboids with vertex and edge constraints.</p>
         </div>
       </div>
+      <RadianceFieldPanel />
       <div className="model-canvas-wrap">
         <Canvas shadows>
           <PerspectiveCamera makeDefault position={[4, 4, 3]} fov={48} />

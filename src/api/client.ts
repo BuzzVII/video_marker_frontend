@@ -2,6 +2,7 @@ import { API_ENDPOINTS, apiUrl } from "./endpoints.js";
 import type { AnnotationState, ImageSet, ImageSetSummary, ProjectSummary } from "../types/annotations";
 import { normalizeAnnotations } from "../state/annotationAtoms";
 import type { EdgeLengthConstraint, ReconstructionModel } from "../types/reconstruction";
+import type { RadianceField, RadianceFieldJob, StartRadianceFieldJobPayload } from "../types/radiance";
 import { normalizeReconstructionModel } from "../utils/reconstructionModel";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -160,5 +161,39 @@ export async function createEdgeLengthConstraint(
   return requestJson(API_ENDPOINTS.edgeLengthConstraints(projectId, modelId), {
     method: "POST",
     body: JSON.stringify(constraint),
+  });
+}
+
+
+export async function fetchRadianceFields(projectId: string): Promise<RadianceField[]> {
+  return requestJson(API_ENDPOINTS.radianceFields(projectId));
+}
+
+export async function fetchRadianceField(projectId: string, radianceFieldId: string): Promise<RadianceField> {
+  const field = await requestJson<RadianceField>(API_ENDPOINTS.radianceField(projectId, radianceFieldId));
+  return {
+    ...field,
+    asset_url: apiUrl(field.asset_url),
+  };
+}
+
+export async function fetchRadianceFieldJobs(projectId: string): Promise<RadianceFieldJob[]> {
+  return requestJson(API_ENDPOINTS.radianceFieldJobs(projectId));
+}
+
+export async function fetchRadianceFieldJob(projectId: string, jobId: string): Promise<RadianceFieldJob> {
+  return requestJson(API_ENDPOINTS.radianceFieldJob(projectId, jobId));
+}
+
+export async function startRadianceFieldJob(
+  projectId: string,
+  payload: StartRadianceFieldJobPayload,
+): Promise<RadianceFieldJob> {
+  return requestJson(API_ENDPOINTS.radianceFieldJobs(projectId), {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      config: payload.config ?? {},
+    }),
   });
 }

@@ -26,6 +26,13 @@ export const API_ENDPOINTS = {
   edgeLengthConstraint: (projectId, modelId, constraintId) => `${API_BASE}/projects/${projectId}/models/${modelId}/edge-length-constraints/${constraintId}`,
   pointVertexConstraints: (projectId, modelId) => `${API_BASE}/projects/${projectId}/models/${modelId}/point-vertex-constraints`,
   pointVertexConstraint: (projectId, modelId, constraintId) => `${API_BASE}/projects/${projectId}/models/${modelId}/point-vertex-constraints/${constraintId}`,
+
+  radianceFields: projectId => `${API_BASE}/projects/${projectId}/radiance-fields`,
+  latestRadianceField: projectId => `${API_BASE}/projects/${projectId}/radiance-fields/latest`,
+  radianceField: (projectId, radianceFieldId) => `${API_BASE}/projects/${projectId}/radiance-fields/${radianceFieldId}`,
+  radianceFieldAsset: (projectId, radianceFieldId) => `${API_BASE}/projects/${projectId}/radiance-fields/${radianceFieldId}/asset`,
+  radianceFieldJobs: projectId => `${API_BASE}/projects/${projectId}/radiance-field-jobs`,
+  radianceFieldJob: (projectId, jobId) => `${API_BASE}/projects/${projectId}/radiance-field-jobs/${jobId}`,
   reconstructionRuns: projectId => `${API_BASE}/projects/${projectId}/reconstruction-runs`,
   reconstructionRun: (projectId, runId) => `${API_BASE}/projects/${projectId}/reconstruction-runs/${runId}`,
 };
